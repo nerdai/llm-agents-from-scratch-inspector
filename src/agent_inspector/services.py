@@ -9,12 +9,13 @@ the route layer.
 This module contains ``HealthService`` (see #1) and ``SessionService``
 (see #2), the in-memory ``SessionStore`` foundation that owns the live
 ``LLMAgent`` + ``SupervisedTaskHandler`` per session, the per-session
-busy lock, and the server-authoritative ``need`` state machine. Actual
-session creation (constructing an ``LLMAgent`` and calling
-``run_supervised()``) and the step/approve/reject/abort orchestration
-that drives the ``need`` machine are wired up by later issues (#3-#6,
-#11-#14); this module only supplies the storage/lifecycle machinery
-they build on.
+busy lock, and the server-authoritative ``need`` state machine.
+``SessionService.complete()`` (see #6) approves a session's pending
+``TaskResult``. Actual session creation (constructing an ``LLMAgent``
+and calling ``run_supervised()``) and the remaining next-step/run-step/
+reject/abort orchestration that drives the ``need`` machine are wired
+up by other issues (#3-#5, #11-#14); this module only supplies the
+storage/lifecycle machinery they build on.
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from llm_agents_from_scratch import LLMAgent
+from llm_agents_from_scratch.data_structures import TaskResult
 
 Need = Literal["next", "run", "approve", "done"]
 """The server-authoritative state a session is waiting in.
@@ -157,6 +159,30 @@ class InvalidNeedTransitionError(SessionServiceError):
         )
 
 
+class MissingPendingResultError(SessionServiceError):
+    """Raised when a session is at ``need="approve"`` with no pending result.
+
+    ``require_need(session, "approve")`` guarantees the ``need`` is
+    correct, but not that ``session.pending_result`` was actually
+    populated; if it's missing here that's a bug in whatever
+    transitioned the session into ``"approve"`` (issue #4's
+    ``next-step`` handling), not a client error. Route layer should
+    map this to ``500``.
+    """
+
+    def __init__(self, session_id: str) -> None:
+        """Initialize a MissingPendingResultError.
+
+        Args:
+            session_id (str): The affected session's identifier.
+        """
+        self.session_id = session_id
+        super().__init__(
+            f"Session {session_id!r} is at need='approve' but has no "
+            "pending_result stored.",
+        )
+
+
 @dataclass
 class Session:
     """In-memory state for a single supervised-run session.
@@ -174,12 +200,25 @@ class Session:
             ``complete``, ``reject``, and ``abort``.
         need (Need): The server-authoritative state the session is
             waiting in. Defaults to ``"next"``.
+        pending_result (TaskResult | None): The proposed ``TaskResult``
+            awaiting operator approval, set when a ``next-step`` call
+            resolves the task (``need`` transitions ``"next"`` ->
+            ``"approve"``) and cleared once ``complete()`` or
+            ``reject()`` consumes it. NOTE: added by issue #6 as a
+            minimal, clearly-scoped field so the ``complete`` endpoint
+            has somewhere to read the pending result from without a
+            request body; issue #4 (next-step) is expected to *set*
+            this field when it stores a final ``TaskResult`` and
+            transitions to ``"approve"`` -- if #4/#5 lands with a
+            different mechanism, reconcile on this field name at
+            merge time.
     """
 
     id: str
     agent: LLMAgent
     handler: Any
     need: Need = "next"
+    pending_result: TaskResult | None = None
     _lock: threading.Lock = field(
         default_factory=threading.Lock,
         repr=False,
@@ -335,3 +374,37 @@ class SessionService:
         finally:
             with self._registry_lock:
                 session._busy = False
+
+    async def complete(self, session: Session) -> TaskResult:
+        """Approve the session's pending ``TaskResult`` and resolve it.
+
+        Per TRD §6.4 (see #6): requires ``session.need == "approve"``;
+        calls the framework's ``SupervisedTaskHandler.complete(result)``,
+        which records the episode to memory and resolves the handler
+        (an ``asyncio.Future``) with ``result``. Then clears the
+        session's pending result and transitions ``need`` to ``"done"``.
+
+        Args:
+            session (Session): The session to complete. Callers should
+                obtain this via ``lock_session()`` so the mutation is
+                serialized against other calls on the same session.
+
+        Returns:
+            TaskResult: The now-approved task result.
+
+        Raises:
+            WrongNeedError: If ``session.need != "approve"``.
+            MissingPendingResultError: If ``session.need == "approve"``
+                but ``session.pending_result`` is unset (indicates a
+                bug upstream, not a client error).
+        """
+        self.require_need(session, "approve")
+        result = session.pending_result
+        if result is None:
+            raise MissingPendingResultError(session.id)
+
+        await session.handler.complete(result)
+
+        session.pending_result = None
+        self.transition_need(session, "done")
+        return result
