@@ -1,6 +1,7 @@
 # React + TypeScript + Vite
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+This is the Agent Inspector frontend: a minimal React + TypeScript app
+built with Vite.
 
 Currently, two official plugins are available:
 
@@ -11,22 +12,18 @@ Currently, two official plugins are available:
 
 The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
-## Expanding the Oxlint configuration
+## Linting and formatting
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+Linting is handled by [ESLint](https://eslint.org/) (flat config, see
+`eslint.config.js`) and formatting by [Prettier](https://prettier.io/)
+(see `.prettierrc.json`):
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm run lint          # eslint .
+npm run format        # prettier --write .
+npm run format:check  # prettier --check .
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Both are also wired into the repo-root `.pre-commit-config.yaml`, so
+`pre-commit run --all-files` from the repo root covers the frontend
+too.

@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import "./App.css";
+import { useEffect, useState } from 'react'
+import './App.css'
 
 /**
  * Placeholder root component.
@@ -10,14 +10,14 @@ import "./App.css";
  * frontend is served correctly and can reach the backend API.
  */
 function App() {
-  const [health, setHealth] = useState<string>("checking...");
+  const [health, setHealth] = useState<string>('checking...')
 
   useEffect(() => {
-    fetch("/api/health")
+    fetch('/api/health')
       .then((res) => res.json())
       .then((data) => setHealth(JSON.stringify(data)))
-      .catch(() => setHealth("unreachable"));
-  }, []);
+      .catch(() => setHealth('unreachable'))
+  }, [])
 
   return (
     <section id="center">
@@ -27,7 +27,7 @@ function App() {
         Backend health check: <code>{health}</code>
       </p>
     </section>
-  );
+  )
 }
 
-export default App;
+export default App
