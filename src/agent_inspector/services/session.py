@@ -74,11 +74,6 @@ class Session:
     agent: LLMAgent
     handler: Any
     need: Need = "next"
-    _lock: threading.Lock = field(
-        default_factory=threading.Lock,
-        repr=False,
-        compare=False,
-    )
     _busy: bool = field(default=False, repr=False, compare=False)
 
 
@@ -125,13 +120,12 @@ class SessionService:
         Returns:
             Session: The newly created, stored session.
         """
-        session = Session(
-            id=self._generate_session_id(),
-            agent=agent,
-            handler=handler,
-        )
         with self._registry_lock:
-            self._sessions[session.id] = session
+            session_id = self._generate_session_id()
+            while session_id in self._sessions:
+                session_id = self._generate_session_id()
+            session = Session(id=session_id, agent=agent, handler=handler)
+            self._sessions[session_id] = session
         return session
 
     def get_session(self, session_id: str) -> Session:
@@ -146,10 +140,11 @@ class SessionService:
         Raises:
             SessionNotFoundError: If no session with that id exists.
         """
-        session = self._sessions.get(session_id)
-        if session is None:
-            raise SessionNotFoundError(session_id)
-        return session
+        with self._registry_lock:
+            session = self._sessions.get(session_id)
+            if session is None:
+                raise SessionNotFoundError(session_id)
+            return session
 
     def drop_session(self, session_id: str) -> None:
         """Remove a session, discarding its handler and agent.
@@ -159,10 +154,15 @@ class SessionService:
 
         Raises:
             SessionNotFoundError: If no session with that id exists.
+            SessionBusyError: If the session has a mutating call
+                currently in flight (held via ``lock_session``).
         """
         with self._registry_lock:
-            if session_id not in self._sessions:
+            session = self._sessions.get(session_id)
+            if session is None:
                 raise SessionNotFoundError(session_id)
+            if session._busy:
+                raise SessionBusyError(session_id)
             del self._sessions[session_id]
 
     def require_need(self, session: Session, expected: Need) -> None:
@@ -219,8 +219,10 @@ class SessionService:
             SessionBusyError: If the session already has a call in
                 flight.
         """
-        session = self.get_session(session_id)
         with self._registry_lock:
+            session = self._sessions.get(session_id)
+            if session is None:
+                raise SessionNotFoundError(session_id)
             if session._busy:
                 raise SessionBusyError(session_id)
             session._busy = True

@@ -59,6 +59,27 @@ class TestSessionLifecycle:
 
         assert first.id != second.id
 
+    def test_create_session_retries_on_id_collision(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A regenerated id colliding with a live session is retried."""
+        service = SessionService()
+        ids = iter(["sess_dup", "sess_dup", "sess_unique"])
+        monkeypatch.setattr(
+            SessionService,
+            "_generate_session_id",
+            staticmethod(lambda: next(ids)),
+        )
+
+        first = _new_session(service)
+        second = _new_session(service)
+
+        assert first.id == "sess_dup"
+        assert second.id == "sess_unique"
+        assert service.get_session("sess_dup") is first
+        assert service.get_session("sess_unique") is second
+
     def test_create_session_starts_at_need_next(self) -> None:
         """A freshly created session starts with need='next'."""
         service = SessionService()
@@ -98,6 +119,25 @@ class TestSessionLifecycle:
 
         with pytest.raises(SessionNotFoundError):
             service.drop_session("sess_does-not-exist")
+
+    def test_drop_session_while_locked_raises_busy(self) -> None:
+        """Dropping a session with a call in flight raises busy.
+
+        Prevents deleting a session out from under an in-progress
+        mutating call (e.g. a concurrent run-step).
+        """
+        service = SessionService()
+        session = _new_session(service)
+
+        with (
+            service.lock_session(session.id),
+            pytest.raises(SessionBusyError),
+        ):
+            service.drop_session(session.id)
+
+        service.drop_session(session.id)
+        with pytest.raises(SessionNotFoundError):
+            service.get_session(session.id)
 
 
 class TestNeedStateMachine:
