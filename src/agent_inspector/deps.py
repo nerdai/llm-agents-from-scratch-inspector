@@ -12,7 +12,7 @@ from typing import Annotated
 
 from fastapi import Depends
 
-from agent_inspector.services import HealthService
+from agent_inspector.services import HealthService, SessionService
 
 _health_service = HealthService()
 
@@ -27,3 +27,20 @@ def get_health_service() -> HealthService:
 
 
 HealthServiceDep = Annotated[HealthService, Depends(get_health_service)]
+
+# Module-level singleton: SessionService holds live in-memory session
+# state (agents, handlers, locks), so it must not be re-created per
+# request the way a stateless service could be.
+_session_service = SessionService()
+
+
+def get_session_service() -> SessionService:
+    """Provide the process-wide ``SessionService`` instance.
+
+    Returns:
+        SessionService: The shared session service instance.
+    """
+    return _session_service
+
+
+SessionServiceDep = Annotated[SessionService, Depends(get_session_service)]
