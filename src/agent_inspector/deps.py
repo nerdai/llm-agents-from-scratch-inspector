@@ -6,8 +6,6 @@ Both services and routes receive their collaborators through the
 DI wiring in one place as the app grows more services.
 """
 
-from __future__ import annotations
-
 from typing import Annotated
 
 from fastapi import Depends
