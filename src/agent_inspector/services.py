@@ -11,10 +11,10 @@ This module contains ``HealthService`` (see #1) and ``SessionService``
 ``LLMAgent`` + ``SupervisedTaskHandler`` per session, the per-session
 busy lock, and the server-authoritative ``need`` state machine. Actual
 session creation (constructing an ``LLMAgent`` and calling
-``run_supervised()``) and the step/approve/reject/abort orchestration
-that drives the ``need`` machine are wired up by later issues (#3-#6,
-#11-#14); this module only supplies the storage/lifecycle machinery
-they build on.
+``run_supervised()``) is wired up by issue #3. The next-step /
+run-step / approve-reject-abort orchestration that drives the
+``need`` machine is wired up by issues #4-#6, #11-#14;
+``SessionService.get_next_step`` (see #4) is the first of these.
 """
 
 from __future__ import annotations
@@ -27,6 +27,13 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from llm_agents_from_scratch import LLMAgent
+from llm_agents_from_scratch.data_structures import (
+    NextStepDecision,
+    RejectedTaskResult,
+    TaskResult,
+    TaskStep,
+    TaskStepResult,
+)
 
 Need = Literal["next", "run", "approve", "done"]
 """The server-authoritative state a session is waiting in.
@@ -174,18 +181,77 @@ class Session:
             ``complete``, ``reject``, and ``abort``.
         need (Need): The server-authoritative state the session is
             waiting in. Defaults to ``"next"``.
+        last_step_result (TaskStepResult | RejectedTaskResult | None):
+            The value to pass as ``previous_step_result`` on the next
+            ``handler.get_next_step()`` call (see #4). The framework's
+            ``SupervisedTaskHandler`` is caller-driven and does not
+            retain this between calls itself, so it has to live here.
+            ``None`` until the first ``run_step()``/``reject()``
+            completes, which is also what makes the framework treat
+            the very first ``get_next_step()`` call as the
+            deterministic "wrap the task instruction, no LLM call"
+            case -- no separate first-call bookkeeping is needed.
+            Set by issue #5 (``run_step``) and #6 (``reject``); read
+            (never mutated) by issue #4 (``get_next_step``).
     """
 
     id: str
     agent: LLMAgent
     handler: Any
     need: Need = "next"
+    last_step_result: TaskStepResult | RejectedTaskResult | None = None
     _lock: threading.Lock = field(
         default_factory=threading.Lock,
         repr=False,
         compare=False,
     )
     _busy: bool = field(default=False, repr=False, compare=False)
+
+
+@dataclass(frozen=True)
+class NextStepDecisionOutcome:
+    """The "next_step" outcome of ``SessionService.get_next_step`` (#4).
+
+    Attributes:
+        decision (NextStepDecision): Mirrors the routing decision that
+            produced ``step``. The framework's
+            ``SupervisedTaskHandler.get_next_step`` doesn't hand back
+            the ``NextStepDecision`` it (may have) obtained from the
+            LLM -- it's consumed internally to build the returned
+            ``TaskStep`` -- so this is reconstructed here rather than
+            passed through. It's exact, not approximate: the
+            framework sets ``TaskStep.instruction`` to the decision's
+            ``content`` verbatim for the "next_step" kind, and the
+            deterministic first-call path (no LLM consulted) has no
+            real decision to reconstruct from in the first place, so
+            the same construction is correct for both cases.
+        step (TaskStep): The next step for the caller to run via
+            run-step (#5).
+        need (Need): The session's new ``need`` ("run").
+    """
+
+    decision: NextStepDecision
+    step: TaskStep
+    need: Need
+    kind: Literal["next_step"] = "next_step"
+
+
+@dataclass(frozen=True)
+class NextStepFinalOutcome:
+    """The "final_result" outcome of ``SessionService.get_next_step`` (#4).
+
+    Attributes:
+        result (TaskResult): The task's final result, awaiting
+            operator approval/rejection (#6).
+        need (Need): The session's new ``need`` ("approve").
+    """
+
+    result: TaskResult
+    need: Need
+    kind: Literal["final_result"] = "final_result"
+
+
+NextStepOutcome = NextStepDecisionOutcome | NextStepFinalOutcome
 
 
 class SessionService:
@@ -335,3 +401,59 @@ class SessionService:
         finally:
             with self._registry_lock:
                 session._busy = False
+
+    async def get_next_step(self, session_id: str) -> NextStepOutcome:
+        """Advance a session through TRD §6.2's next-step transition.
+
+        Calls ``session.handler.get_next_step()`` with
+        ``session.last_step_result`` as ``previous_step_result`` --
+        ``None`` on a session's first call, which the framework's own
+        ``SupervisedTaskHandler.get_next_step`` already treats as
+        "deterministically wrap the task instruction, no LLM call"
+        (see ``Session.last_step_result`` for why no separate
+        first-call tracking is needed here). On any later call,
+        ``last_step_result`` holds whatever run-step (#5) or reject
+        (#6) last stored, and the framework consults the LLM to route
+        between another step and a final result.
+
+        This method only reads ``last_step_result``; it's never
+        mutated here.
+
+        Args:
+            session_id (str): The session identifier.
+
+        Returns:
+            NextStepOutcome: A ``NextStepDecisionOutcome`` when the
+                handler produced another ``TaskStep`` (``need`` moves
+                to ``"run"``), or a ``NextStepFinalOutcome`` when it
+                produced a ``TaskResult`` (``need`` moves to
+                ``"approve"``).
+
+        Raises:
+            SessionNotFoundError: If no session with that id exists.
+            SessionBusyError: If the session already has a call in
+                flight.
+            WrongNeedError: If ``session.need != "next"``.
+        """
+        with self.lock_session(session_id) as session:
+            self.require_need(session, "next")
+            handler_result = await session.handler.get_next_step(
+                session.last_step_result,
+            )
+
+            if isinstance(handler_result, TaskStep):
+                self.transition_need(session, "run")
+                return NextStepDecisionOutcome(
+                    decision=NextStepDecision(
+                        kind="next_step",
+                        content=handler_result.instruction,
+                    ),
+                    step=handler_result,
+                    need=session.need,
+                )
+
+            self.transition_need(session, "approve")
+            return NextStepFinalOutcome(
+                result=handler_result,
+                need=session.need,
+            )
