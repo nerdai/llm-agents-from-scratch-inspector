@@ -16,8 +16,6 @@ abort orchestration that drives the ``need`` machine the rest of the
 way is wired up by later issues (#4-#6, #11-#14).
 """
 
-from __future__ import annotations
-
 import secrets
 import threading
 from collections.abc import Iterator, Sequence

@@ -18,8 +18,6 @@ that project's own test pattern and as a safety net against any future
 network access creeping into ``OllamaLLM.__init__``.
 """
 
-from __future__ import annotations
-
 from unittest.mock import MagicMock, patch
 
 import pytest
