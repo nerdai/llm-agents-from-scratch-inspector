@@ -1,1 +1,5 @@
 .claude/settings.local.json
+
+# Local, personal scratch notes (LEARNING-0xx-<desc>.md) -- not meant to be
+# shared or reviewed, unlike docs/adr/.
+learnings/
