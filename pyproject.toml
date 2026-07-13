@@ -1,0 +1,78 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agent-inspector"
+version = "0.1.0"
+description = "A dev tool for manually driving llm-agents-from-scratch's SupervisedTaskHandler one call at a time, over HTTP, via a React frontend."
+license = "Apache-2.0"
+readme = "README.md"
+authors = [
+  {name = "Andrei Fajardo", email = "andrei@nerdai.io"}
+]
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.115.0,<1.0.0",
+  "llm-agents-from-scratch>=0.0.19,<0.1.0",
+  "typer>=0.12.0,<1.0.0",
+  "uvicorn[standard]>=0.32.0,<1.0.0"
+]
+
+[project.scripts]
+agent-inspector = "agent_inspector.cli:main"
+
+[dependency-groups]
+dev = [
+  "mypy>=1.14.1",
+  "pre-commit>=4.1.0",
+  "ruff>=0.9.2"
+]
+
+[tool.hatch.build]
+artifacts = ["src/agent_inspector/web/**"]
+
+[tool.hatch.build.hooks.custom]
+path = "hatch_build.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agent_inspector"]
+
+[tool.ruff]
+line-length = 80
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+[tool.ruff.lint]
+select = [
+  "A", # flake8-builtins
+  "B", # flake8-bugbear
+  "COM", # flake8-commas
+  "C4", # flake8-comprehensions
+  "RET", # flake8-return
+  "SIM", # flake8-simplify
+  "ICN", # flake8-import-conventions
+  "Q", # flake8-quotes
+  "RSE", # flake8-raise
+  "D", # pydocstyle
+  "E", # pycodestyle
+  "F", # pyflakes
+  "I", # isort
+  "W", # pycodestyle
+  "N", # pep8-naming
+  "ERA", # eradicate
+  "PL", # pylint
+  "D213" # Multiline Docstrings start on newline
+]
+ignore = [
+  "A002" # Ignore variable `input` is shadowing a Python builtin in function
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["D104"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google" # Ensures Google style
