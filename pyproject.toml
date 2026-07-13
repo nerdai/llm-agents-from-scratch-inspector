@@ -6,6 +6,8 @@ build-backend = "hatchling.build"
 dev = [
   "mypy>=1.14.1",
   "pre-commit>=4.1.0",
+  "pytest>=8.3.0",
+  "pytest-asyncio>=0.24.0",
   "ruff>=0.9.2"
 ]
 
@@ -37,6 +39,9 @@ path = "hatch_build.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/agent_inspector"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
 
 [tool.ruff]
 line-length = 80
