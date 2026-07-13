@@ -98,8 +98,10 @@ class TestCreateSessionFromConfig:
             think=True,
         )
 
-        assert session.agent.llm.model == "llama3.2"
-        assert session.agent.llm.think is True
+        llm = session.agent.llm
+        assert isinstance(llm, OllamaLLM)
+        assert llm.model == "llama3.2"
+        assert llm.think is True
 
     @patch(_OLLAMA_ASYNC_CLIENT)
     async def test_ignores_unknown_function_tool_names(
