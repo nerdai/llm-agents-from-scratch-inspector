@@ -7,8 +7,6 @@ the pattern used in ``llm-agents-from-scratch``'s own
 ``tests/conftest.py::MockBaseLLM`` -- no Ollama daemon required.
 """
 
-from __future__ import annotations
-
 from typing import Any, Sequence
 
 import pytest
@@ -18,6 +16,7 @@ from llm_agents_from_scratch.base.llm import BaseLLM, StructuredOutputType
 from llm_agents_from_scratch.base.tool import Tool
 from llm_agents_from_scratch.data_structures import (
     ChatMessage,
+    ChatRole,
     CompleteResult,
     NextStepDecision,
     Task,
@@ -50,7 +49,7 @@ class _MockBaseLLM(BaseLLM):
 
     async def complete(self, prompt: str, **kwargs: Any) -> CompleteResult:
         """Unused on the next-step path; provided to satisfy BaseLLM."""
-        return CompleteResult(response="mock complete", full_response=prompt)
+        return CompleteResult(response="mock complete", prompt=prompt)
 
     async def structured_output(
         self,
@@ -70,8 +69,11 @@ class _MockBaseLLM(BaseLLM):
     ) -> tuple[ChatMessage, ChatMessage]:
         """Unused on the next-step path; provided to satisfy BaseLLM."""
         return (
-            ChatMessage(role="user", content=input),
-            ChatMessage(role="assistant", content="mock chat response"),
+            ChatMessage(role=ChatRole.USER, content=input),
+            ChatMessage(
+                role=ChatRole.ASSISTANT,
+                content="mock chat response",
+            ),
         )
 
     async def continue_chat_with_tool_results(
@@ -84,7 +86,10 @@ class _MockBaseLLM(BaseLLM):
         """Unused on the next-step path; provided to satisfy BaseLLM."""
         return (
             [],
-            ChatMessage(role="assistant", content="mock tool response"),
+            ChatMessage(
+                role=ChatRole.ASSISTANT,
+                content="mock tool response",
+            ),
         )
 
 

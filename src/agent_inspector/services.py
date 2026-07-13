@@ -17,8 +17,6 @@ run-step / approve-reject-abort orchestration that drives the
 ``SessionService.get_next_step`` (see #4) is the first of these.
 """
 
-from __future__ import annotations
-
 import secrets
 import threading
 from collections.abc import Iterator
