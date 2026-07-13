@@ -12,8 +12,6 @@ establish the services -> deps -> routes -> server layering. The real
 ``SupervisedTaskHandler`` orchestration) is added in a later issue.
 """
 
-from __future__ import annotations
-
 
 class HealthService:
     """Reports whether the backend process is up and responsive."""
