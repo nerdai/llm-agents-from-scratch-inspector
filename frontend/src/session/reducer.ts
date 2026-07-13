@@ -21,10 +21,8 @@ export type Action =
   | { type: "complete/error"; error: string }
   | { type: "reset" };
 
-let entryCounter = 0;
-function nextEntryId(prefix: string): string {
-  entryCounter += 1;
-  return `${prefix}-${entryCounter}`;
+function nextEntryId(prefix: string, timeline: SessionState["timeline"]): string {
+  return `${prefix}-${timeline.length + 1}`;
 }
 
 export function sessionReducer(
@@ -63,7 +61,7 @@ export function sessionReducer(
             ...state.timeline,
             {
               kind: "overseer",
-              id: nextEntryId("overseer"),
+              id: nextEntryId("overseer", state.timeline),
               outcome: "next_step",
               decision: res.decision,
               step: res.step,
@@ -80,7 +78,7 @@ export function sessionReducer(
           ...state.timeline,
           {
             kind: "overseer",
-            id: nextEntryId("overseer"),
+            id: nextEntryId("overseer", state.timeline),
             outcome: "final_result",
             result: res.result,
           },
@@ -103,7 +101,7 @@ export function sessionReducer(
           ...state.timeline,
           {
             kind: "worker",
-            id: nextEntryId("worker"),
+            id: nextEntryId("worker", state.timeline),
             result: action.payload.result,
             toolCalls: action.payload.tool_calls,
             stepCounter: action.payload.step_counter,
