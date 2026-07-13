@@ -18,8 +18,6 @@ approve/reject/abort orchestration is wired up by later issues (#6,
 #11-#14).
 """
 
-from __future__ import annotations
-
 import secrets
 import threading
 from collections.abc import Iterator
@@ -253,6 +251,30 @@ class RunStepOutcome:
     need: Need
 
 
+class _ToolCallRecorder:
+    """Accumulates a ``ToolCallTrace`` per real tool execution."""
+
+    def __init__(self) -> None:
+        """Initialize an empty recorder."""
+        self.traces: list[ToolCallTrace] = []
+
+    def record(self, tool_call: ToolCall, result: ToolCallResult) -> None:
+        """Append a trace entry for one executed tool call.
+
+        Args:
+            tool_call (ToolCall): The call the LLM requested.
+            result (ToolCallResult): The result of executing it.
+        """
+        self.traces.append(
+            ToolCallTrace(
+                tool_name=tool_call.tool_name,
+                args=tool_call.arguments,
+                content=result.content,
+                error=result.error,
+            ),
+        )
+
+
 class _RecordingSyncTool(BaseTool):
     """Wraps a synchronous ``Tool``, recording each call to a recorder."""
 
@@ -335,30 +357,6 @@ class _RecordingAsyncTool(AsyncBaseTool):
         result = await self._wrapped(tool_call, *args, **kwargs)
         self._recorder.record(tool_call, result)
         return result
-
-
-class _ToolCallRecorder:
-    """Accumulates a ``ToolCallTrace`` per real tool execution."""
-
-    def __init__(self) -> None:
-        """Initialize an empty recorder."""
-        self.traces: list[ToolCallTrace] = []
-
-    def record(self, tool_call: ToolCall, result: ToolCallResult) -> None:
-        """Append a trace entry for one executed tool call.
-
-        Args:
-            tool_call (ToolCall): The call the LLM requested.
-            result (ToolCallResult): The result of executing it.
-        """
-        self.traces.append(
-            ToolCallTrace(
-                tool_name=tool_call.tool_name,
-                args=tool_call.arguments,
-                content=result.content,
-                error=result.error,
-            ),
-        )
 
 
 def _wrap_tool_for_recording(

@@ -13,8 +13,6 @@ from issues #3/#4, which may not be merged yet) per this issue's
 scope.
 """
 
-from __future__ import annotations
-
 from typing import Any, Sequence
 
 import pytest
