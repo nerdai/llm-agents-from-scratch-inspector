@@ -1,16 +1,10 @@
-"""API route registration.
-
-Routes are intentionally thin: parse the request, call the relevant
-service via its injected dependency, map any domain exception to an
-appropriate ``HTTPException``, and return. No business logic lives
-here — see ``services.py``.
-"""
+"""Health-check route (see #1)."""
 
 from fastapi import APIRouter
 
 from agent_inspector.deps import HealthServiceDep
 
-router = APIRouter(prefix="/api")
+router = APIRouter()
 
 
 @router.get("/health")

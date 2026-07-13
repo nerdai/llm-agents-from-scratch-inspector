@@ -1,13 +1,6 @@
-"""Business-logic services for Agent Inspector.
+"""Session lifecycle business logic (see #2).
 
-This module is the only place domain/business logic lives. Routes
-(``routes.py``) call into services through the dependency-injected
-instances declared in ``deps.py``; services raise domain exceptions
-rather than ``fastapi.HTTPException``, leaving HTTP-status mapping to
-the route layer.
-
-This module contains ``HealthService`` (see #1) and ``SessionService``
-(see #2), the in-memory ``SessionStore`` foundation that owns the live
+The in-memory ``SessionStore`` foundation that owns the live
 ``LLMAgent`` + ``SupervisedTaskHandler`` per session, the per-session
 busy lock, and the server-authoritative ``need`` state machine. Actual
 session creation (constructing an ``LLMAgent`` and calling
@@ -25,6 +18,13 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from llm_agents_from_scratch import LLMAgent
+
+from agent_inspector.errors import (
+    InvalidNeedTransitionError,
+    SessionBusyError,
+    SessionNotFoundError,
+    WrongNeedError,
+)
 
 Need = Literal["next", "run", "approve", "done"]
 """The server-authoritative state a session is waiting in.
@@ -49,110 +49,6 @@ _NEED_TRANSITIONS: dict[Need, frozenset[Need]] = {
 
 _SESSION_ID_PREFIX = "sess_"
 _SESSION_ID_TOKEN_BYTES = 8
-
-
-class HealthService:
-    """Reports whether the backend process is up and responsive."""
-
-    def check(self) -> dict[str, str]:
-        """Return the current liveness status of the backend.
-
-        Returns:
-            dict[str, str]: A status payload, e.g. ``{"status": "ok"}``.
-        """
-        return {"status": "ok"}
-
-
-class SessionServiceError(Exception):
-    """Base class for all ``SessionService`` domain exceptions.
-
-    Framework-agnostic by design: ``services.py`` must not import
-    FastAPI, so it is the route layer's job to catch these and
-    translate them into ``HTTPException``s.
-    """
-
-
-class SessionNotFoundError(SessionServiceError):
-    """Raised when a ``session_id`` has no corresponding live session.
-
-    Route layer should map this to ``404``.
-    """
-
-    def __init__(self, session_id: str) -> None:
-        """Initialize a SessionNotFoundError.
-
-        Args:
-            session_id (str): The unknown session identifier.
-        """
-        self.session_id = session_id
-        super().__init__(f"No session found with id {session_id!r}.")
-
-
-class SessionBusyError(SessionServiceError):
-    """Raised when a session already has a mutating call in flight.
-
-    Route layer should map this to ``409``.
-    """
-
-    def __init__(self, session_id: str) -> None:
-        """Initialize a SessionBusyError.
-
-        Args:
-            session_id (str): The busy session's identifier.
-        """
-        self.session_id = session_id
-        super().__init__(
-            f"Session {session_id!r} already has a call in flight.",
-        )
-
-
-class WrongNeedError(SessionServiceError):
-    """Raised when a call doesn't match the session's current ``need``.
-
-    Route layer should map this to ``409``.
-    """
-
-    def __init__(self, session_id: str, expected: Need, actual: Need) -> None:
-        """Initialize a WrongNeedError.
-
-        Args:
-            session_id (str): The affected session's identifier.
-            expected (Need): The ``need`` the caller assumed.
-            actual (Need): The session's actual current ``need``.
-        """
-        self.session_id = session_id
-        self.expected = expected
-        self.actual = actual
-        super().__init__(
-            f"Session {session_id!r} expected need {expected!r}, but is "
-            f"currently at {actual!r}.",
-        )
-
-
-class InvalidNeedTransitionError(SessionServiceError):
-    """Raised when a ``need`` transition isn't allowed by the TRD §7 FSM.
-
-    This indicates a bug in the calling route/orchestration code (an
-    illegal transition was attempted), not bad client input. Route
-    layer should map this to ``409`` (or treat as a ``500``) rather
-    than silently allowing it.
-    """
-
-    def __init__(self, session_id: str, current: Need, target: Need) -> None:
-        """Initialize an InvalidNeedTransitionError.
-
-        Args:
-            session_id (str): The affected session's identifier.
-            current (Need): The session's current ``need``.
-            target (Need): The disallowed target ``need``.
-        """
-        self.session_id = session_id
-        self.current = current
-        self.target = target
-        super().__init__(
-            f"Session {session_id!r} cannot transition from "
-            f"{current!r} to {target!r}.",
-        )
 
 
 @dataclass

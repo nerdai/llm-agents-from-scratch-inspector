@@ -1,4 +1,4 @@
-"""Tests for ``agent_inspector.services.SessionService``.
+"""Tests for ``agent_inspector.services.session.SessionService``.
 
 Covers the in-memory ``SessionStore`` lifecycle, the per-session busy
 lock (issue #2 acceptance criteria: two overlapping mutating calls on
@@ -12,14 +12,13 @@ from typing import cast
 import pytest
 from llm_agents_from_scratch import LLMAgent
 
-from agent_inspector.services import (
+from agent_inspector.errors import (
     InvalidNeedTransitionError,
-    Session,
     SessionBusyError,
     SessionNotFoundError,
-    SessionService,
     WrongNeedError,
 )
+from agent_inspector.services.session import Session, SessionService
 
 # SessionService doesn't inspect the agent/handler at runtime (it's
 # plain in-memory storage), so a cheap stand-in is enough here; the

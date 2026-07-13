@@ -10,7 +10,8 @@ from typing import Annotated
 
 from fastapi import Depends
 
-from agent_inspector.services import HealthService, SessionService
+from agent_inspector.services.health import HealthService
+from agent_inspector.services.session import SessionService
 
 _health_service = HealthService()
 
