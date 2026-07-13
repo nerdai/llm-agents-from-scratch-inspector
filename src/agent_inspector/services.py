@@ -234,6 +234,29 @@ class NoPendingStepError(SessionServiceError):
         )
 
 
+class MissingPendingResultError(SessionServiceError):
+    """Raised when a session is at ``need="approve"`` with no pending result.
+
+    ``require_need(session, "approve")`` guarantees the ``need`` is
+    correct, but not that ``session.pending_result`` was actually
+    populated; if it's missing here that's a bug in whatever
+    transitioned the session into ``"approve"`` (``get_next_step``, #4),
+    not a client error. Route layer should map this to ``500``.
+    """
+
+    def __init__(self, session_id: str) -> None:
+        """Initialize a MissingPendingResultError.
+
+        Args:
+            session_id (str): The affected session's identifier.
+        """
+        self.session_id = session_id
+        super().__init__(
+            f"Session {session_id!r} is at need='approve' but has no "
+            "pending_result stored.",
+        )
+
+
 class StepExecutionError(SessionServiceError):
     """Raised when the framework raises while executing a step.
 
@@ -454,6 +477,11 @@ class Session:
             ``get_next_step`` (#4) whenever it transitions ``need`` to
             ``"run"``; consumed and cleared by ``run_step`` (#5).
             ``None`` whenever ``need != "run"``.
+        pending_result (TaskResult | None): The proposed ``TaskResult``
+            awaiting operator approval. Set by ``get_next_step`` (#4)
+            whenever it transitions ``need`` to ``"approve"``; consumed
+            and cleared by ``complete`` (#6) or (later) ``reject``
+            (#11).
         last_step_result (TaskStepResult | RejectedTaskResult | None):
             The value to pass as ``previous_step_result`` on the next
             ``handler.get_next_step()`` call (see #4). The framework's
@@ -464,7 +492,7 @@ class Session:
             the very first ``get_next_step()`` call as the
             deterministic "wrap the task instruction, no LLM call"
             case -- no separate first-call bookkeeping is needed. Set
-            by ``run_step`` (#5) and (later) ``reject`` (#6); read
+            by ``run_step`` (#5) and (later) ``reject`` (#11); read
             (never mutated) by ``get_next_step`` (#4).
     """
 
@@ -473,6 +501,7 @@ class Session:
     handler: Any
     need: Need = "next"
     pending_step: TaskStep | None = None
+    pending_result: TaskResult | None = None
     last_step_result: TaskStepResult | RejectedTaskResult | None = None
     _lock: threading.Lock = field(
         default_factory=threading.Lock,
@@ -741,12 +770,14 @@ class SessionService:
         (see ``Session.last_step_result`` for why no separate
         first-call tracking is needed here). On any later call,
         ``last_step_result`` holds whatever run-step (#5) or reject
-        (#6) last stored, and the framework consults the LLM to route
+        (#11) last stored, and the framework consults the LLM to route
         between another step and a final result.
 
         This method only reads ``last_step_result``; it's never
         mutated here. It *writes* ``session.pending_step`` (for
-        run-step, #5, to consume) when the outcome is another step.
+        run-step, #5, to consume) when the outcome is another step, or
+        ``session.pending_result`` (for complete, #6, to consume) when
+        the outcome is a final result.
 
         Args:
             session_id (str): The session identifier.
@@ -782,6 +813,7 @@ class SessionService:
                     need=session.need,
                 )
 
+            session.pending_result = handler_result
             self.transition_need(session, "approve")
             return NextStepFinalOutcome(
                 result=handler_result,
@@ -852,3 +884,37 @@ class SessionService:
             step_counter=getattr(session.handler, "step_counter", 0),
             need=session.need,
         )
+
+    async def complete(self, session: Session) -> TaskResult:
+        """Approve the session's pending ``TaskResult`` and resolve it.
+
+        Per TRD §6.4 (see #6): requires ``session.need == "approve"``;
+        calls the framework's ``SupervisedTaskHandler.complete(result)``,
+        which records the episode to memory and resolves the handler
+        (an ``asyncio.Future``) with ``result``. Then clears the
+        session's pending result and transitions ``need`` to ``"done"``.
+
+        Args:
+            session (Session): The session to complete. Callers should
+                obtain this via ``lock_session()`` so the mutation is
+                serialized against other calls on the same session.
+
+        Returns:
+            TaskResult: The now-approved task result.
+
+        Raises:
+            WrongNeedError: If ``session.need != "approve"``.
+            MissingPendingResultError: If ``session.need == "approve"``
+                but ``session.pending_result`` is unset (indicates a
+                bug upstream, not a client error).
+        """
+        self.require_need(session, "approve")
+        result = session.pending_result
+        if result is None:
+            raise MissingPendingResultError(session.id)
+
+        await session.handler.complete(result)
+
+        session.pending_result = None
+        self.transition_need(session, "done")
+        return result
