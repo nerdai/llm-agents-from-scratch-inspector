@@ -17,8 +17,6 @@ that drives the ``need`` machine are wired up by later issues (#3-#6,
 they build on.
 """
 
-from __future__ import annotations
-
 import secrets
 import threading
 from collections.abc import Iterator
