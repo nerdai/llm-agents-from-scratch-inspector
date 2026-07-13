@@ -6,8 +6,6 @@ wheel's file set is determined, so the built assets are packaged
 alongside the Python backend.
 """
 
-from __future__ import annotations
-
 import shutil
 import subprocess
 from pathlib import Path

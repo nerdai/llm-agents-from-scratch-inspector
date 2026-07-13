@@ -11,8 +11,6 @@ which a single ``StaticFiles(html=True)`` mount at ``/`` cannot do (a
 falls through to a route registered after it).
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException

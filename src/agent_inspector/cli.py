@@ -4,8 +4,6 @@ Registered as the ``agent-inspector`` console script (see
 ``[project.scripts]`` in ``pyproject.toml``).
 """
 
-from __future__ import annotations
-
 import os
 import shutil
 import subprocess

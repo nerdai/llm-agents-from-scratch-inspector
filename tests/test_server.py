@@ -6,8 +6,6 @@ on any client-side route without a matching file on disk (e.g. a hard
 refresh on a future React Router path).
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

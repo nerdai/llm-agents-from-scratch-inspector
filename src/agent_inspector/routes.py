@@ -6,8 +6,6 @@ appropriate ``HTTPException``, and return. No business logic lives
 here — see ``services.py``.
 """
 
-from __future__ import annotations
-
 from fastapi import APIRouter
 
 from agent_inspector.deps import HealthServiceDep
