@@ -6,8 +6,6 @@ wheel's file set is determined, so the built assets are packaged
 alongside the Python backend.
 """
 
-from __future__ import annotations
-
 import shutil
 import subprocess
 from pathlib import Path
@@ -48,7 +46,7 @@ class FrontendBuildHook(BuildHookInterface):  # type: ignore[misc]
 
         print("[agent-inspector] Installing frontend dependencies...")
         subprocess.run(
-            [npm, "install"],
+            [npm, "ci"],
             cwd=frontend_dir,
             check=True,
         )
@@ -67,7 +65,24 @@ class FrontendBuildHook(BuildHookInterface):  # type: ignore[misc]
                 f"{dist_dir}.",
             )
 
+        # Clear previously-built assets without touching the tracked
+        # `.gitkeep` (a wholesale `rmtree` would delete it and leave
+        # the working tree dirty after every build).
         if web_dir.exists():
-            shutil.rmtree(web_dir)
-        shutil.copytree(dist_dir, web_dir)
+            for entry in web_dir.iterdir():
+                if entry.name == ".gitkeep":
+                    continue
+                if entry.is_dir():
+                    shutil.rmtree(entry)
+                else:
+                    entry.unlink()
+        else:
+            web_dir.mkdir(parents=True)
+
+        for entry in dist_dir.iterdir():
+            dest = web_dir / entry.name
+            if entry.is_dir():
+                shutil.copytree(entry, dest)
+            else:
+                shutil.copy2(entry, dest)
         print(f"[agent-inspector] Copied {dist_dir} -> {web_dir}")

@@ -6,8 +6,6 @@ one session -> the second raises ``SessionBusyError``, which the route
 layer maps to ``409``), and the ``need`` state machine from TRD §7.
 """
 
-from __future__ import annotations
-
 import asyncio
 from typing import cast
 

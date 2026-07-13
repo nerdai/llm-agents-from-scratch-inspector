@@ -18,8 +18,6 @@ up by other issues (#3-#5, #11-#14); this module only supplies the
 storage/lifecycle machinery they build on.
 """
 
-from __future__ import annotations
-
 import secrets
 import threading
 from collections.abc import Iterator

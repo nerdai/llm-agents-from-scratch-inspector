@@ -8,8 +8,6 @@ see ``llm-agents-from-scratch``'s ``tests/conftest.py`` /
 FastAPI's ``TestClient``.
 """
 
-from __future__ import annotations
-
 import asyncio
 from unittest.mock import AsyncMock
 
@@ -20,6 +18,7 @@ from llm_agents_from_scratch.data_structures import (
     NextStepDecision,
     Task,
     TaskResult,
+    TaskStep,
     TaskStepResult,
 )
 from llm_agents_from_scratch.memory.memory import Memory
@@ -58,6 +57,7 @@ async def _drive_session_to_approve(
 
     # first get_next_step (no previous result) -> TaskStep, no LLM call
     first_step = await handler.get_next_step(None)
+    assert isinstance(first_step, TaskStep)
 
     # fabricate the step's result directly rather than driving run_step()
     # (which would exercise llm.chat / tool-calling -- out of scope here)
