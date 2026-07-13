@@ -35,7 +35,12 @@ def create_app(*, serve_static: bool = True) -> FastAPI:
     app = FastAPI(title="Agent Inspector")
     app.include_router(router)
 
-    has_built_assets = WEB_DIR.is_dir() and any(WEB_DIR.iterdir())
+    # WEB_DIR always contains a tracked `.gitkeep` (even in a fresh,
+    # unbuilt checkout), so check for `index.html` specifically rather
+    # than "any file exists" -- otherwise this mounts StaticFiles with
+    # nothing real to serve, and `/` 404s instead of the documented
+    # no-op.
+    has_built_assets = (WEB_DIR / "index.html").is_file()
     if serve_static and has_built_assets:
         app.mount(
             "/",

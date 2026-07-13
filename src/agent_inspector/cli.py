@@ -6,6 +6,7 @@ Registered as the ``agent-inspector`` console script (see
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import threading
@@ -118,9 +119,18 @@ def launch(
                 f"Starting Vite dev server in {_FRONTEND_DIR} "
                 f"(proxying /api to http://127.0.0.1:{port})...",
             )
+            # vite.config.ts reads this to point its /api proxy at the
+            # backend's actual port -- without it, the proxy would
+            # silently fall back to its own hardcoded default and
+            # break whenever --port isn't the default.
+            vite_env = {
+                **os.environ,
+                "AGENT_INSPECTOR_BACKEND_PORT": str(port),
+            }
             vite_process = subprocess.Popen(
                 [npm, "run", "dev"],
                 cwd=_FRONTEND_DIR,
+                env=vite_env,
             )
             browser_url = f"http://127.0.0.1:{DEFAULT_VITE_PORT}"
         else:
