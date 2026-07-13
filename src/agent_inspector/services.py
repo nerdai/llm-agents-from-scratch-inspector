@@ -9,24 +9,26 @@ the route layer.
 This module contains ``HealthService`` (see #1) and ``SessionService``
 (see #2), the in-memory ``SessionStore`` foundation that owns the live
 ``LLMAgent`` + ``SupervisedTaskHandler`` per session, the per-session
-busy lock, and the server-authoritative ``need`` state machine. Actual
-session creation (constructing an ``LLMAgent`` and calling
-``run_supervised()``) and the step/approve/reject/abort orchestration
-that drives the ``need`` machine are wired up by later issues (#3-#6,
-#11-#14); this module only supplies the storage/lifecycle machinery
-they build on.
+busy lock, and the server-authoritative ``need`` state machine.
+``SessionService.create_session_from_config()`` (see #3) builds the
+``LLMAgent`` and calls ``run_supervised()``; the step/approve/reject/
+abort orchestration that drives the ``need`` machine the rest of the
+way is wired up by later issues (#4-#6, #11-#14).
 """
 
 from __future__ import annotations
 
 import secrets
 import threading
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from llm_agents_from_scratch import LLMAgent
+from llm_agents_from_scratch.data_structures import Task
+from llm_agents_from_scratch.llms import OllamaLLM
+from llm_agents_from_scratch.tools import SimpleFunctionTool
 
 Need = Literal["next", "run", "approve", "done"]
 """The server-authoritative state a session is waiting in.
@@ -51,6 +53,31 @@ _NEED_TRANSITIONS: dict[Need, frozenset[Need]] = {
 
 _SESSION_ID_PREFIX = "sess_"
 _SESSION_ID_TOKEN_BYTES = 8
+
+# M1 (issue #3) hardcodes exactly one real function tool, regardless of
+# what a client's ``function_tools`` request field names -- genuine
+# arbitrary function-tool registration is issue #8's (M2) job. This is
+# the TRD's running Hailstone-sequence example.
+NEXT_NUMBER_TOOL_NAME = "next_number"
+
+# Framework defaults, matching the framework's own ch08 examples
+# (`examples/ch08.ipynb`) and the TRD §6.1 request example.
+DEFAULT_OLLAMA_MODEL = "qwen3:14b"
+DEFAULT_THINK = False
+
+
+def next_number(x: int) -> int:
+    """Hailstone-sequence step function.
+
+    M1's one hardcoded real function tool (see ``NEXT_NUMBER_TOOL_NAME``).
+
+    Args:
+        x (int): The current value in the sequence.
+
+    Returns:
+        int: ``x // 2`` if ``x`` is even, else ``3 * x + 1``.
+    """
+    return x // 2 if x % 2 == 0 else 3 * x + 1
 
 
 class HealthService:
@@ -106,6 +133,23 @@ class SessionBusyError(SessionServiceError):
         super().__init__(
             f"Session {session_id!r} already has a call in flight.",
         )
+
+
+class SessionConfigError(SessionServiceError):
+    """Raised when the config for a new session is invalid.
+
+    Route layer should map this to ``422``.
+    """
+
+    def __init__(self, message: str) -> None:
+        """Initialize a SessionConfigError.
+
+        Args:
+            message (str): Human-readable description of what's wrong
+                with the supplied config.
+        """
+        self.message = message
+        super().__init__(message)
 
 
 class WrongNeedError(SessionServiceError):
@@ -239,6 +283,60 @@ class SessionService:
         with self._registry_lock:
             self._sessions[session.id] = session
         return session
+
+    async def create_session_from_config(
+        self,
+        *,
+        task: str,
+        model: str | None = None,
+        think: bool | None = None,
+        function_tools: Sequence[str] | None = None,
+    ) -> Session:
+        """Build an ``LLMAgent``, start a supervised run, register it.
+
+        Implements TRD §6.1 (issue #3): builds an ``LLMAgent`` wired to
+        an ``OllamaLLM`` backbone and calls ``run_supervised(task)`` to
+        obtain the ``SupervisedTaskHandler``, then hands the resulting
+        agent/handler pair to ``create_session()``.
+
+        M1 scope: only ``task``, ``model``, and ``think`` are actually
+        acted on. ``function_tools`` is accepted but ignored -- the
+        agent is always equipped with exactly one real tool,
+        ``next_number`` (see ``NEXT_NUMBER_TOOL_NAME``); genuine
+        arbitrary function-tool registration is issue #8 (M2).
+        ``skills_scopes``/``explicit_only_skills``/``mcp_servers`` are
+        M2/M3 scope and aren't parameters here -- the route layer
+        accepts and ignores them for now.
+
+        Args:
+            task (str): The task instruction.
+            model (str | None): Ollama model name. Defaults to
+                ``DEFAULT_OLLAMA_MODEL`` if not provided.
+            think (bool | None): Enable/disable Ollama thinking mode.
+                Defaults to ``DEFAULT_THINK`` if not provided.
+            function_tools (Sequence[str] | None): Names of function
+                tools requested by the client. Accepted for forward
+                compatibility but currently ignored -- see above.
+
+        Returns:
+            Session: The newly created, stored session, at
+                ``need="next"``.
+
+        Raises:
+            SessionConfigError: If ``task`` is blank.
+        """
+        del function_tools  # M1: always registers next_number; see above.
+
+        if not task or not task.strip():
+            raise SessionConfigError("`task` must be a non-empty string.")
+
+        llm = OllamaLLM(
+            model=model or DEFAULT_OLLAMA_MODEL,
+            think=think if think is not None else DEFAULT_THINK,
+        )
+        agent = LLMAgent(llm=llm, tools=[SimpleFunctionTool(func=next_number)])
+        handler = await agent.run_supervised(Task(instruction=task))
+        return self.create_session(agent, handler)
 
     def get_session(self, session_id: str) -> Session:
         """Look up a session by id.
