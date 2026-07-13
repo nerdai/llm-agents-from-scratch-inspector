@@ -38,7 +38,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115.0,<1.0.0" },
-    { name = "llm-agents-from-scratch", specifier = ">=0.0.19,<0.1.0" },
+    { name = "llm-agents-from-scratch", git = "https://github.com/nerdai/llm-agents-from-scratch?rev=815c089c6b623fd82aba28e3601fcd9034a24e18" },
     { name = "typer", specifier = ">=0.12.0,<1.0.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0,<1.0.0" },
 ]
@@ -946,7 +946,7 @@ wheels = [
 [[package]]
 name = "llm-agents-from-scratch"
 version = "0.0.19"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/nerdai/llm-agents-from-scratch?rev=815c089c6b623fd82aba28e3601fcd9034a24e18#815c089c6b623fd82aba28e3601fcd9034a24e18" }
 dependencies = [
     { name = "asyncio" },
     { name = "colorama" },
@@ -956,11 +956,8 @@ dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "qdrant-client", extra = ["fastembed"] },
+    { name = "rich" },
     { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/02/63/1b96385192f414c521b4d61bb42528ea1f9e0928cef8de84acd39826ac12/llm_agents_from_scratch-0.0.19.tar.gz", hash = "sha256:59077e4297cea9797636388f249651135c0c2f0d314ad293150d05ca8c9dc5c8", size = 1752956, upload-time = "2026-06-23T04:39:38.797Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/71/c5/94c6fa882c0388b9a8cd02ad92cc2bf8c128ad5318c27285573cec35948a/llm_agents_from_scratch-0.0.19-py3-none-any.whl", hash = "sha256:37d2d5e3979be6422d36c84953f9ec993c926d7f6794d28f55be6d1eb1d3154b", size = 72667, upload-time = "2026-06-23T04:39:37.823Z" },
 ]
 
 [[package]]

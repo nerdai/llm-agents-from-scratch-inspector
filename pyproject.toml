@@ -22,6 +22,17 @@ dependencies = [
 [project.scripts]
 agent-inspector = "agent_inspector.cli:main"
 
+# TEMPORARY: PyPI's latest llm-agents-from-scratch release (0.0.19) predates the
+# SupervisedTaskHandler / run_supervised() / RejectedTaskResult API this project
+# is built around -- that work exists only on the framework's unreleased main
+# branch (22 commits past the v0.0.19 tag as of this writing). Pin uv at that
+# exact commit (a public repo, so this resolves in CI and for any contributor
+# -- no local path dependency) so development can proceed against the real
+# API. Swap this for a plain version bump in `dependencies` above once a
+# release ships with SupervisedTaskHandler, and delete this source override.
+[tool.uv.sources]
+llm-agents-from-scratch = { git = "https://github.com/nerdai/llm-agents-from-scratch", rev = "815c089c6b623fd82aba28e3601fcd9034a24e18" }
+
 [dependency-groups]
 dev = [
   "mypy>=1.14.1",
