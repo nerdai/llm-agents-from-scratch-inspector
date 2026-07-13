@@ -11,10 +11,11 @@ This module contains ``HealthService`` (see #1) and ``SessionService``
 ``LLMAgent`` + ``SupervisedTaskHandler`` per session, the per-session
 busy lock, and the server-authoritative ``need`` state machine. Actual
 session creation (constructing an ``LLMAgent`` and calling
-``run_supervised()``) and the step/approve/reject/abort orchestration
-that drives the ``need`` machine are wired up by later issues (#3-#6,
-#11-#14); this module only supplies the storage/lifecycle machinery
-they build on.
+``run_supervised()``) is issue #3's job. ``SessionService.run_step``
+(see #5) executes a session's pending ``TaskStep`` via the framework's
+``run_step()`` and builds a tool-call trace; the remaining
+approve/reject/abort orchestration is wired up by later issues (#6,
+#11-#14).
 """
 
 from __future__ import annotations
@@ -27,6 +28,13 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from llm_agents_from_scratch import LLMAgent
+from llm_agents_from_scratch.base.tool import AsyncBaseTool, BaseTool
+from llm_agents_from_scratch.data_structures import (
+    TaskStep,
+    TaskStepResult,
+    ToolCall,
+    ToolCallResult,
+)
 
 Need = Literal["next", "run", "approve", "done"]
 """The server-authoritative state a session is waiting in.
@@ -157,6 +165,226 @@ class InvalidNeedTransitionError(SessionServiceError):
         )
 
 
+class NoPendingStepError(SessionServiceError):
+    """Raised when ``run_step`` is called but no ``TaskStep`` is pending.
+
+    This indicates a server-side invariant violation: ``need == "run"``
+    is only ever set alongside a recorded ``pending_step`` (by the
+    next-step endpoint, issue #4). Route layer should map this to
+    ``500``.
+    """
+
+    def __init__(self, session_id: str) -> None:
+        """Initialize a NoPendingStepError.
+
+        Args:
+            session_id (str): The affected session's identifier.
+        """
+        self.session_id = session_id
+        super().__init__(
+            f"Session {session_id!r} has need='run' but no pending "
+            "TaskStep is recorded.",
+        )
+
+
+class StepExecutionError(SessionServiceError):
+    """Raised when the framework raises while executing a step.
+
+    Wraps whatever exception ``SupervisedTaskHandler.run_step()``
+    propagates (e.g. an LLM/network failure of the backbone LLM).
+    Failed *tool calls* do not raise -- the framework already reports
+    those as a ``ToolCallResult(error=True, ...)`` -- so this is
+    reserved for LLM/framework-level failures. Route layer should map
+    this to ``502``.
+    """
+
+    def __init__(self, session_id: str, cause: Exception) -> None:
+        """Initialize a StepExecutionError.
+
+        Args:
+            session_id (str): The affected session's identifier.
+            cause (Exception): The underlying exception raised by the
+                framework.
+        """
+        self.session_id = session_id
+        super().__init__(
+            f"Session {session_id!r} failed to execute its pending "
+            f"step: {cause}",
+        )
+
+
+@dataclass
+class ToolCallTrace:
+    """A single tool call executed as part of a ``run_step`` call.
+
+    Attributes:
+        tool_name (str): Name of the tool that was called.
+        args (dict[str, Any]): Arguments the LLM supplied for the call.
+        content (Any): The tool's result content.
+        error (bool): Whether the tool call itself errored.
+    """
+
+    tool_name: str
+    args: dict[str, Any]
+    content: Any
+    error: bool
+
+
+@dataclass
+class RunStepOutcome:
+    """The outcome of executing a session's pending ``TaskStep``.
+
+    Attributes:
+        result (TaskStepResult): The framework's step result.
+        tool_calls (list[ToolCallTrace]): Trace of every tool call made
+            while executing the step, in call order.
+        step_counter (int): The handler's running count of executed
+            steps (the framework's own ``TaskHandler.step_counter``,
+            which starts at ``0`` and is incremented at the start of
+            each ``run_step()`` call -- so after the Nth successful
+            run-step call this equals ``N``).
+        need (Need): The session's ``need`` after this call (``"next"``
+            on success).
+    """
+
+    result: TaskStepResult
+    tool_calls: list[ToolCallTrace]
+    step_counter: int
+    need: Need
+
+
+class _RecordingSyncTool(BaseTool):
+    """Wraps a synchronous ``Tool``, recording each call to a recorder."""
+
+    def __init__(self, wrapped: BaseTool, recorder: _ToolCallRecorder) -> None:
+        """Initialize a _RecordingSyncTool.
+
+        Args:
+            wrapped (BaseTool): The real tool to delegate execution to.
+            recorder (_ToolCallRecorder): Collects a trace of calls.
+        """
+        self._wrapped = wrapped
+        self._recorder = recorder
+
+    @property
+    def name(self) -> str:
+        """Name of the wrapped tool."""
+        return self._wrapped.name
+
+    @property
+    def description(self) -> str:
+        """Description of the wrapped tool."""
+        return self._wrapped.description
+
+    @property
+    def parameters_json_schema(self) -> dict[str, Any]:
+        """JSON schema of the wrapped tool."""
+        return self._wrapped.parameters_json_schema
+
+    def __call__(
+        self,
+        tool_call: ToolCall,
+        *args: Any,
+        **kwargs: Any,
+    ) -> ToolCallResult:
+        """Execute the wrapped tool and record the call."""
+        result = self._wrapped(tool_call, *args, **kwargs)
+        self._recorder.record(tool_call, result)
+        return result
+
+
+class _RecordingAsyncTool(AsyncBaseTool):
+    """Wraps an asynchronous ``Tool``, recording each call to a recorder."""
+
+    def __init__(
+        self,
+        wrapped: AsyncBaseTool,
+        recorder: _ToolCallRecorder,
+    ) -> None:
+        """Initialize a _RecordingAsyncTool.
+
+        Args:
+            wrapped (AsyncBaseTool): The real tool to delegate to.
+            recorder (_ToolCallRecorder): Collects a trace of calls.
+        """
+        self._wrapped = wrapped
+        self._recorder = recorder
+
+    @property
+    def name(self) -> str:
+        """Name of the wrapped tool."""
+        return self._wrapped.name
+
+    @property
+    def description(self) -> str:
+        """Description of the wrapped tool."""
+        return self._wrapped.description
+
+    @property
+    def parameters_json_schema(self) -> dict[str, Any]:
+        """JSON schema of the wrapped tool."""
+        return self._wrapped.parameters_json_schema
+
+    async def __call__(
+        self,
+        tool_call: ToolCall,
+        *args: Any,
+        **kwargs: Any,
+    ) -> ToolCallResult:
+        """Execute the wrapped tool and record the call."""
+        result = await self._wrapped(tool_call, *args, **kwargs)
+        self._recorder.record(tool_call, result)
+        return result
+
+
+class _ToolCallRecorder:
+    """Accumulates a ``ToolCallTrace`` per real tool execution."""
+
+    def __init__(self) -> None:
+        """Initialize an empty recorder."""
+        self.traces: list[ToolCallTrace] = []
+
+    def record(self, tool_call: ToolCall, result: ToolCallResult) -> None:
+        """Append a trace entry for one executed tool call.
+
+        Args:
+            tool_call (ToolCall): The call the LLM requested.
+            result (ToolCallResult): The result of executing it.
+        """
+        self.traces.append(
+            ToolCallTrace(
+                tool_name=tool_call.tool_name,
+                args=tool_call.arguments,
+                content=result.content,
+                error=result.error,
+            ),
+        )
+
+
+def _wrap_tool_for_recording(
+    tool: BaseTool | AsyncBaseTool,
+    recorder: _ToolCallRecorder,
+) -> BaseTool | AsyncBaseTool:
+    """Wrap a tool so its real execution is recorded by ``recorder``.
+
+    Preserves whether the tool is sync (``BaseTool``) or async
+    (``AsyncBaseTool``): ``TaskHandler.run_step`` branches on
+    ``isinstance(tool, AsyncBaseTool)`` to decide whether to ``await``
+    it, so the wrapper must match the wrapped tool's kind.
+
+    Args:
+        tool (BaseTool | AsyncBaseTool): The real, registered tool.
+        recorder (_ToolCallRecorder): Collects a trace of calls.
+
+    Returns:
+        BaseTool | AsyncBaseTool: A same-kind wrapper that delegates
+            to ``tool`` and records the call.
+    """
+    if isinstance(tool, AsyncBaseTool):
+        return _RecordingAsyncTool(tool, recorder)
+    return _RecordingSyncTool(tool, recorder)
+
+
 @dataclass
 class Session:
     """In-memory state for a single supervised-run session.
@@ -174,12 +402,27 @@ class Session:
             ``complete``, ``reject``, and ``abort``.
         need (Need): The server-authoritative state the session is
             waiting in. Defaults to ``"next"``.
+        pending_step (TaskStep | None): The ``TaskStep`` currently
+            awaiting execution via ``run_step`` (see #5). Set whenever
+            the next-step endpoint (#4) transitions ``need`` to
+            ``"run"``; consumed and cleared by ``run_step``. ``None``
+            whenever ``need != "run"``.
+
+            NOTE (added by #5): this field did not exist before issue
+            #5 -- ``SupervisedTaskHandler.run_step(step)`` takes the
+            step to execute explicitly rather than tracking it
+            internally, so *something* has to hold onto the
+            ``TaskStep`` returned by ``get_next_step()`` between the
+            next-step and run-step calls. #4 is being implemented in
+            parallel and may already add an equivalent field; if so,
+            reconcile the two on merge rather than keeping both.
     """
 
     id: str
     agent: LLMAgent
     handler: Any
     need: Need = "next"
+    pending_step: TaskStep | None = None
     _lock: threading.Lock = field(
         default_factory=threading.Lock,
         repr=False,
@@ -335,3 +578,65 @@ class SessionService:
         finally:
             with self._registry_lock:
                 session._busy = False
+
+    async def run_step(self, session: Session) -> RunStepOutcome:
+        """Execute a session's pending ``TaskStep`` (see #5).
+
+        Calls the framework's ``SupervisedTaskHandler.run_step(step)``
+        on ``session.pending_step``. Real tools registered on
+        ``session.agent`` (e.g. ``next_number``) execute for real as
+        part of the framework's own tool-calling loop inside
+        ``run_step`` -- this method only wraps each registered tool
+        for the duration of the call so it can build a ``tool_calls[]``
+        trace; it does not stub or intercept execution. On success,
+        clears ``pending_step`` and transitions ``need`` back to
+        ``"next"``.
+
+        Callers should hold the session's busy lock (``lock_session``)
+        for the duration of this call.
+
+        Args:
+            session (Session): The session to advance. Must have
+                ``need == "run"``.
+
+        Returns:
+            RunStepOutcome: The step result, tool-call trace, updated
+                step counter, and resulting ``need``.
+
+        Raises:
+            WrongNeedError: If ``session.need != "run"``.
+            NoPendingStepError: If ``need == "run"`` but no
+                ``pending_step`` is recorded (server invariant bug).
+            StepExecutionError: If the framework raises while running
+                the step (LLM/framework-level failure, not a failed
+                tool call -- those are reported in the trace instead).
+        """
+        self.require_need(session, "run")
+        step = session.pending_step
+        if step is None:
+            raise NoPendingStepError(session.id)
+
+        recorder = _ToolCallRecorder()
+        original_tools = dict(session.agent.tools_registry)
+        for tool_name, tool in original_tools.items():
+            session.agent.tools_registry[tool_name] = _wrap_tool_for_recording(
+                tool,
+                recorder,
+            )
+        try:
+            result = await session.handler.run_step(step)
+        except Exception as e:
+            raise StepExecutionError(session.id, e) from e
+        finally:
+            session.agent.tools_registry.clear()
+            session.agent.tools_registry.update(original_tools)
+
+        session.pending_step = None
+        self.transition_need(session, "next")
+
+        return RunStepOutcome(
+            result=result,
+            tool_calls=recorder.traces,
+            step_counter=getattr(session.handler, "step_counter", 0),
+            need=session.need,
+        )
