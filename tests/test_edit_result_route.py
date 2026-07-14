@@ -270,11 +270,17 @@ class TestEditResultSuccess:
         assert second_span is not None
         second_start, second_end = second_span
         # The second step's span must start where the (now-edited)
-        # first step's content ended -- i.e. bookkeeping wasn't
-        # corrupted by the earlier, length-changing edit.
-        assert second_start == first_start + len(long_edit)
+        # first step's content ended, *plus* the "\n\n" separator the
+        # framework prepends before a non-first step's formatted text
+        # -- i.e. bookkeeping wasn't corrupted by the earlier,
+        # length-changing edit, and the separator itself is excluded
+        # from the span so a later edit can't swallow it.
+        rollout_joiner_len = 2
+        assert second_start == first_start + len(long_edit) + rollout_joiner_len
         rollout_after_step_2 = session.handler.rollout
-        assert rollout_after_step_2[:second_start] == rollout_after_edit
+        assert rollout_after_step_2[:second_start] == (
+            rollout_after_edit + "\n\n"
+        )
         assert "Step two." in rollout_after_step_2[second_start:second_end]
 
         # Now edit step 2's result and confirm it lands precisely,
@@ -293,10 +299,72 @@ class TestEditResultSuccess:
             + rollout_after_step_2[second_end:]
         )
         # Step 1's edited content, preceding the second step, is
-        # unaffected by editing step 2.
-        assert final_rollout[:second_start] == rollout_after_edit
+        # unaffected by editing step 2 -- and the "\n\n" separator
+        # between the two steps survived the edit rather than being
+        # swallowed by it (the separator is excluded from the
+        # recorded span precisely so this holds).
+        assert final_rollout[:second_start] == rollout_after_edit + "\n\n"
+        assert f"{long_edit}\n\n{second_edit}" in final_rollout
         assert long_edit in final_rollout
         assert session.last_step_result.content == second_edit
+
+
+class TestEditResultInvalidSpan:
+    """500 when ``last_rollout_span`` is missing or out of bounds.
+
+    Both are server-side invariant violations, not client errors:
+    ``run_step`` always sets a span consistent with the ``rollout`` it
+    just wrote. An out-of-bounds span is deliberately tested here
+    because Python slicing never raises on one -- it would otherwise
+    splice silently wrong instead of surfacing as an error.
+    """
+
+    async def test_out_of_bounds_span_raises_instead_of_corrupting(
+        self,
+        client: TestClient,
+        session_service: SessionService,
+    ) -> None:
+        """A stale/invalid span 500s instead of silently mis-splicing."""
+        tool_call = ToolCall(tool_name="next_number", arguments={"x": 4})
+        llm = _ScriptedLLM(tool_call=tool_call, final_content="It's 5.")
+        session = await _build_session_at_next(session_service, llm)
+        rollout_before = session.handler.rollout
+
+        # Simulate a corrupted/stale span: end far beyond the actual
+        # rollout length.
+        session.last_rollout_span = (0, len(rollout_before) + 1000)
+
+        response = client.patch(
+            f"/api/sessions/{session.id}/result",
+            json={"content": "whatever"},
+        )
+
+        assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+        # The rollout must be left untouched -- no silently-wrong splice.
+        assert session.handler.rollout == rollout_before
+
+    async def test_inverted_span_raises_instead_of_corrupting(
+        self,
+        client: TestClient,
+        session_service: SessionService,
+    ) -> None:
+        """A span with start > end 500s instead of an empty/reversed splice."""
+        tool_call = ToolCall(tool_name="next_number", arguments={"x": 4})
+        llm = _ScriptedLLM(tool_call=tool_call, final_content="It's 5.")
+        session = await _build_session_at_next(session_service, llm)
+        rollout_before = session.handler.rollout
+        assert session.last_rollout_span is not None
+        start, end = session.last_rollout_span
+
+        session.last_rollout_span = (end, start)  # inverted
+
+        response = client.patch(
+            f"/api/sessions/{session.id}/result",
+            json={"content": "whatever"},
+        )
+
+        assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+        assert session.handler.rollout == rollout_before
 
 
 class TestEditResultWrongNeed:

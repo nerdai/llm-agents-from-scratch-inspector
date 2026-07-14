@@ -1,4 +1,4 @@
-"""Session lifecycle routes (see #3-#6).
+"""Session lifecycle routes (see #3-#6, #11).
 
 Routes are intentionally thin: parse the request, call the relevant
 service via its injected dependency, map any domain exception to an
@@ -25,10 +25,16 @@ from agent_inspector.errors.session import (
     WrongNeedError,
 )
 from agent_inspector.schemas import (
+    AbortSessionResponse,
     CreateSessionRequest,
     CreateSessionResponse,
     EditResultRequest,
     EditResultResponse,
+    EditStepRequest,
+    EditStepResponse,
+    RejectedTaskResultOut,
+    RejectRequest,
+    RejectResponse,
     RunStepResponse,
     TaskOut,
     TaskStepResultOut,
@@ -205,6 +211,48 @@ async def post_run_step(
     )
 
 
+@router.patch("/sessions/{session_id}/step")
+async def patch_step(
+    session_id: str,
+    request: EditStepRequest,
+    session_service: SessionServiceDep,
+) -> EditStepResponse:
+    """Edit the session's pending ``TaskStep`` (TRD §6.10, see #13).
+
+    Mutates the pending step's instruction in place without consuming
+    it or advancing ``need``. Requires ``need == "run"`` -- i.e. must
+    be called strictly before ``run-step`` (#5) consumes the step, so
+    the edit is guaranteed to be what ``run-step`` actually executes.
+
+    Args:
+        session_id (str): The session identifier.
+        request (EditStepRequest): The new instruction text.
+        session_service (SessionServiceDep): Injected session service.
+
+    Returns:
+        EditStepResponse: The mutated step, ``edited: true``, and the
+            (unchanged) ``need`` (``"run"``).
+
+    Raises:
+        HTTPException: ``404`` if the session doesn't exist, ``409``
+            if the session is busy or not waiting on ``need == "run"``,
+            ``500`` on a server invariant violation (``need == "run"``
+            with no pending step recorded).
+    """
+    try:
+        with session_service.lock_session(session_id) as session:
+            step = session_service.edit_step(session, request.instruction)
+            need = session.need
+    except SessionNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except (SessionBusyError, WrongNeedError) as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    except NoPendingStepError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    return EditStepResponse(step=step, edited=True, need=need)
+
+
 @router.post("/sessions/{session_id}/complete")
 async def complete_session(
     session_id: str,
@@ -294,6 +342,92 @@ async def patch_result(
         result=TaskStepResultOut(
             task_step_id=result.task_step_id,
             content=result.content,
+        ),
+        need=need,
+    )
+
+
+@router.post("/sessions/{session_id}/abort")
+async def abort_session(
+    session_id: str,
+    session_service: SessionServiceDep,
+) -> AbortSessionResponse:
+    """Abort a session's supervised run (TRD §6.6, see #12).
+
+    No request body: aborts whatever is currently in flight for the
+    session, regardless of whether it's waiting on ``next``, ``run``,
+    or ``approve``. Discards any pending step/result and resolves the
+    framework handler's underlying future with an exception rather
+    than a result.
+
+    Args:
+        session_id (str): The session identifier.
+        session_service (SessionServiceDep): Injected session service.
+
+    Returns:
+        AbortSessionResponse: ``{"status": "aborted", "need": "done"}``.
+
+    Raises:
+        HTTPException: ``404`` if the session doesn't exist, ``409``
+            if the session is already at ``need="done"`` or already
+            has a call in flight.
+    """
+    try:
+        with session_service.lock_session(session_id) as session:
+            await session_service.abort(session)
+            need = session.need
+    except SessionNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except (SessionBusyError, WrongNeedError) as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+
+    return AbortSessionResponse(status="aborted", need=need)
+
+
+@router.post("/sessions/{session_id}/reject")
+async def reject_session(
+    session_id: str,
+    request: RejectRequest,
+    session_service: SessionServiceDep,
+) -> RejectResponse:
+    """Reject the session's pending ``TaskResult`` (TRD §6.5, see #11).
+
+    The server already holds the pending ``TaskResult`` produced by the
+    ``next-step`` call that put the session into ``need="approve"``;
+    the request only supplies the operator's ``feedback``.
+
+    Args:
+        session_id (str): The session identifier.
+        request (RejectRequest): The operator's rejection feedback.
+        session_service (SessionServiceDep): Injected session service.
+
+    Returns:
+        RejectResponse: The rejection (``failed_result_content`` and
+            ``feedback``) and the resulting ``need`` (``"next"`` on
+            success).
+
+    Raises:
+        HTTPException: ``404`` if the session doesn't exist, ``409``
+            if the session isn't at ``need="approve"`` or already has
+            a call in flight, ``500`` if the session reached
+            ``need="approve"`` without a pending result stored (a
+            server-side bug elsewhere in the ``need`` orchestration).
+    """
+    try:
+        with session_service.lock_session(session_id) as session:
+            rejected = session_service.reject(session, request.feedback)
+            need = session.need
+    except SessionNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except (SessionBusyError, WrongNeedError) as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    except MissingPendingResultError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    return RejectResponse(
+        rejected=RejectedTaskResultOut(
+            failed_result_content=rejected.failed_result_content,
+            feedback=rejected.feedback,
         ),
         need=need,
     )

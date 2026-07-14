@@ -6,9 +6,9 @@ busy lock, and the server-authoritative ``need`` state machine.
 ``SessionService.create_session_from_config()`` (see #3, reworked by
 #47/ADR-002) calls the configured ``LLMAgentBuilder.build()`` and
 ``run_supervised()``. ``SessionService.get_next_step`` (see #4),
-``run_step`` (see #5), and ``complete`` (see #6) drive the ``need``
-machine the rest of the way; ``reject``/``abort`` are wired up by
-later issues (#11-#14).
+``run_step`` (see #5), ``complete`` (see #6), ``reject`` (see #11),
+and ``abort`` (see #12) drive the ``need`` machine the rest of the
+way; edit endpoints are wired up by other issues (#13, #14).
 """
 
 import asyncio
@@ -59,6 +59,7 @@ Per the TRD §7 state machine:
     approve -> next (reject(feedback))
     next -> done (abort())
     run -> done (abort())
+    approve -> done (abort())
 """
 
 _NEED_TRANSITIONS: dict[Need, frozenset[Need]] = {
@@ -646,8 +647,50 @@ class SessionService:
                 need=session.need,
             )
 
+    def edit_step(self, session: Session, instruction: str) -> TaskStep:
+        """Edit the instruction of a session's pending ``TaskStep`` (#13).
+
+        Mutates ``session.pending_step.instruction`` in place; does not
+        consume the step, transition ``need``, or touch
+        ``pending_result``/``last_step_result``. Since ``run_step``
+        (#5) reads ``step.instruction`` fresh when it eventually
+        executes the step (no earlier snapshot is taken by the
+        framework), this edit is correctly picked up as long as it
+        happens strictly before that call. ``require_need`` below only
+        checks ``need == "run"`` at the moment this method runs -- it's
+        holding the session's lock via ``lock_session()`` (see the
+        ``session`` arg below) that actually prevents a *concurrent*
+        ``run_step`` call from consuming the step while this edit is in
+        flight; the two guarantees together are what make "strictly
+        before" hold.
+
+        Args:
+            session (Session): The session to edit. Callers must
+                obtain this via ``lock_session()`` so the mutation is
+                serialized against other calls on the same session --
+                see the docstring note above on why that's required,
+                not just recommended, for this method's correctness.
+            instruction (str): The new instruction text.
+
+        Returns:
+            TaskStep: The mutated pending step.
+
+        Raises:
+            WrongNeedError: If ``session.need != "run"``.
+            NoPendingStepError: If ``need == "run"`` but no
+                ``pending_step`` is recorded (server invariant bug;
+                see ``run_step``).
+        """
+        self.require_need(session, "run")
+        step = session.pending_step
+        if step is None:
+            raise NoPendingStepError(session.id)
+
+        step.instruction = instruction
+        return step
+
     async def run_step(self, session: Session) -> RunStepOutcome:
-        """Execute a session's pending ``TaskStep`` (see #5).
+        r"""Execute a session's pending ``TaskStep`` (see #5).
 
         Calls the framework's ``SupervisedTaskHandler.run_step(step)``
         on ``session.pending_step``. Real tools registered on
@@ -667,11 +710,15 @@ class SessionService:
         Bookkeeping for #14: the framework's ``handler.run_step()``
         appends this turn's formatted text directly onto
         ``handler.rollout`` (a plain ``str``) internally -- our code
-        never sees that text on its own. So the exact span it
-        appended is captured here as
-        ``(len(rollout) before the call, len(rollout) after)`` and
-        stored on ``session.last_rollout_span``, letting ``edit_result``
-        (#14) later splice an edit into ``rollout`` precisely.
+        never sees that text on its own. The framework prepends
+        ``"\n\n"`` before it when ``rollout`` is already non-empty (see
+        ``LLMAgent.run_step``), so the appended span's *start* is
+        offset past that separator when one was added -- otherwise a
+        later edit's span-splice would swallow the separator and glue
+        the edited content directly onto the previous step's text with
+        no boundary between them. The span is stored on
+        ``session.last_rollout_span``, letting ``edit_result`` (#14)
+        later splice an edit into ``rollout`` precisely.
 
         Args:
             session (Session): The session to advance. Must have
@@ -711,9 +758,19 @@ class SessionService:
             session.agent.tools_registry.update(original_tools)
         rollout_len_after = len(session.handler.rollout)
 
+        # See the docstring note above: skip the "\n\n" separator the
+        # framework prepends when rollout was already non-empty, so
+        # the recorded span covers only this step's own text.
+        _rollout_joiner_len = 2
+        span_start = (
+            rollout_len_before + _rollout_joiner_len
+            if rollout_len_before
+            else rollout_len_before
+        )
+
         session.pending_step = None
         session.last_step_result = result
-        session.last_rollout_span = (rollout_len_before, rollout_len_after)
+        session.last_rollout_span = (span_start, rollout_len_after)
         self.transition_need(session, "next")
 
         return RunStepOutcome(
@@ -806,8 +863,10 @@ class SessionService:
                 on ``need == "next"`` too).
             MissingRolloutSpanError: If ``last_step_result`` is a
                 ``TaskStepResult`` but no ``last_rollout_span`` is
-                recorded (server invariant bug -- ``run_step`` always
-                sets both together).
+                recorded, or the recorded span is out of bounds for
+                the current ``rollout`` (either way, a server
+                invariant bug -- ``run_step`` always sets a span
+                consistent with the ``rollout`` it just wrote).
         """
         self.require_need(session, "next")
         if not isinstance(session.last_step_result, TaskStepResult):
@@ -817,8 +876,84 @@ class SessionService:
 
         start, end = session.last_rollout_span
         rollout = session.handler.rollout
+        if not (0 <= start <= end <= len(rollout)):
+            # An out-of-bounds span would otherwise splice silently
+            # wrong (Python slicing never raises), so validate it
+            # explicitly rather than let this look like a
+            # correctly-executed edit.
+            raise MissingRolloutSpanError(session.id)
         session.handler.rollout = rollout[:start] + content + rollout[end:]
         session.last_rollout_span = (start, start + len(content))
         session.last_step_result.content = content
 
         return session.last_step_result
+
+    async def abort(self, session: Session) -> None:
+        """Abort a session's supervised run (TRD §6.6, see #12).
+
+        Unlike other mutating calls, abort isn't tied to one specific
+        ``need``: it's allowed from any non-terminal state (``"next"``,
+        ``"run"``, or ``"approve"``); only an already-``"done"``
+        session rejects it. Calls the framework's
+        ``SupervisedTaskHandler.abort()``, which records an episode to
+        memory and resolves the handler (an ``asyncio.Future``) with
+        an exception rather than a result. Then clears any pending
+        step/result and transitions ``need`` to ``"done"``.
+
+        Args:
+            session (Session): The session to abort. Callers should
+                obtain this via ``lock_session()`` so the mutation is
+                serialized against other calls on the same session.
+
+        Raises:
+            WrongNeedError: If ``session.need == "done"`` already.
+        """
+        if session.need == "done":
+            raise WrongNeedError(session.id, "next, run, or approve", "done")
+
+        await session.handler.abort()
+
+        session.pending_step = None
+        session.pending_result = None
+        self.transition_need(session, "done")
+
+    def reject(self, session: Session, feedback: str) -> RejectedTaskResult:
+        """Reject the session's pending ``TaskResult`` (see #11).
+
+        Per TRD §6.5: requires ``session.need == "approve"``; calls the
+        framework's ``SupervisedTaskHandler.reject(result, feedback)`` --
+        a pure, synchronous constructor with no side effects on the
+        handler itself. The caller (this method) is responsible for
+        wiring the returned ``RejectedTaskResult`` into session state:
+        it's stored as ``session.last_step_result`` so the next
+        ``get_next_step()`` call (#4) reads it and routes deterministically
+        to a new ``TaskStep``, no LLM call.
+
+        Args:
+            session (Session): The session to reject the pending result
+                for. Callers should obtain this via ``lock_session()``
+                so the mutation is serialized against other calls on
+                the same session.
+            feedback (str): The operator's correction rationale.
+
+        Returns:
+            RejectedTaskResult: The rejection, now stored as
+                ``session.last_step_result``.
+
+        Raises:
+            WrongNeedError: If ``session.need != "approve"``.
+            MissingPendingResultError: If ``session.need == "approve"``
+                but ``session.pending_result`` is unset (indicates a
+                bug upstream, not a client error).
+        """
+        self.require_need(session, "approve")
+        result = session.pending_result
+        if result is None:
+            raise MissingPendingResultError(session.id)
+
+        rejected: RejectedTaskResult = session.handler.reject(result, feedback)
+
+        session.pending_result = None
+        session.last_step_result = rejected
+        self.transition_need(session, "next")
+        return rejected
