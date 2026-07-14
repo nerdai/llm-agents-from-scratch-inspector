@@ -6,13 +6,12 @@ Both services and routes receive their collaborators through the
 DI wiring in one place as the app grows more services.
 """
 
-from __future__ import annotations
-
 from typing import Annotated
 
 from fastapi import Depends
 
-from agent_inspector.services import HealthService, SessionService
+from agent_inspector.services.health import HealthService
+from agent_inspector.services.session import SessionService
 
 _health_service = HealthService()
 

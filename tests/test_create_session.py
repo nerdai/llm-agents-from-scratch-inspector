@@ -28,12 +28,12 @@ from fastapi.testclient import TestClient
 from llm_agents_from_scratch.agent.llm_agent import LLMAgent
 from llm_agents_from_scratch.llms.ollama import OllamaLLM
 
+from agent_inspector.errors import SessionConfigError
 from agent_inspector.server import create_app
-from agent_inspector.services import (
+from agent_inspector.services.session import (
     DEFAULT_OLLAMA_MODEL,
     DEFAULT_THINK,
     NEXT_NUMBER_TOOL_NAME,
-    SessionConfigError,
     SessionService,
     next_number,
 )

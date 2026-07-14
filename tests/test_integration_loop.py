@@ -40,7 +40,7 @@ from llm_agents_from_scratch.tools.simple_function import SimpleFunctionTool
 
 from agent_inspector.deps import get_session_service
 from agent_inspector.server import create_app
-from agent_inspector.services import SessionService
+from agent_inspector.services.session import SessionService
 
 _HTTP_OK = 200
 _HTTP_CONFLICT = 409

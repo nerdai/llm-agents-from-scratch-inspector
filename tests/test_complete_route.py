@@ -27,7 +27,7 @@ from llm_agents_from_scratch.memory.memory import Memory
 
 from agent_inspector.deps import get_session_service
 from agent_inspector.server import create_app
-from agent_inspector.services import Session
+from agent_inspector.services.session import Session
 
 client = TestClient(create_app(serve_static=False))
 

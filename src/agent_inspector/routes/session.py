@@ -1,24 +1,19 @@
-"""API route registration.
+"""Session lifecycle routes (see #3-#6).
 
 Routes are intentionally thin: parse the request, call the relevant
 service via its injected dependency, map any domain exception to an
 appropriate ``HTTPException``, and return. No business logic lives
-here — see ``services.py``.
+here -- see ``services/session.py``.
 """
-
-from __future__ import annotations
 
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
-from agent_inspector.deps import HealthServiceDep, SessionServiceDep
-from agent_inspector.services import (
-    NEXT_NUMBER_TOOL_NAME,
+from agent_inspector.deps import SessionServiceDep
+from agent_inspector.errors import (
     MissingPendingResultError,
-    Need,
-    NextStepDecisionOutcome,
     NoPendingStepError,
     SessionBusyError,
     SessionConfigError,
@@ -26,29 +21,21 @@ from agent_inspector.services import (
     StepExecutionError,
     WrongNeedError,
 )
+from agent_inspector.services.session import (
+    NEXT_NUMBER_TOOL_NAME,
+    Need,
+    NextStepDecisionOutcome,
+)
 
-router = APIRouter(prefix="/api")
-
-
-@router.get("/health")
-def get_health(health_service: HealthServiceDep) -> dict[str, str]:
-    """Report backend liveness.
-
-    Args:
-        health_service (HealthServiceDep): Injected health service.
-
-    Returns:
-        dict[str, str]: A status payload, e.g. ``{"status": "ok"}``.
-    """
-    return health_service.check()
+router = APIRouter()
 
 
 class FunctionToolSpec(BaseModel):
     """A client-supplied function-tool description.
 
     M1 (issue #3) accepts these but only ever registers the hardcoded
-    ``next_number`` tool -- see ``agent_inspector.services``. Genuine
-    arbitrary function-tool registration is issue #8 (M2).
+    ``next_number`` tool -- see ``agent_inspector.services.session``.
+    Genuine arbitrary function-tool registration is issue #8 (M2).
     """
 
     name: str
@@ -147,7 +134,7 @@ async def post_next_step(
 
     No request body: the server tracks the previous step result
     internally on the session rather than the client supplying it
-    (see ``services.Session.last_step_result``).
+    (see ``services.session.Session.last_step_result``).
 
     Args:
         session_id (str): The session identifier.
