@@ -3,21 +3,23 @@
 The in-memory ``SessionStore`` foundation that owns the live
 ``LLMAgent`` + ``SupervisedTaskHandler`` per session, the per-session
 busy lock, and the server-authoritative ``need`` state machine.
-``SessionService.create_session_from_config()`` (see #3) builds the
-``LLMAgent`` and calls ``run_supervised()``. ``SessionService.
-get_next_step`` (see #4), ``run_step`` (see #5), and ``complete`` (see
-#6) drive the ``need`` machine the rest of the way; ``reject``/
-``abort`` are wired up by later issues (#11-#14).
+``SessionService.create_session_from_config()`` (see #3, reworked by
+#47/ADR-002) calls the configured ``LLMAgentBuilder.build()`` and
+``run_supervised()``. ``SessionService.get_next_step`` (see #4),
+``run_step`` (see #5), and ``complete`` (see #6) drive the ``need``
+machine the rest of the way; ``reject``/``abort`` are wired up by
+later issues (#11-#14).
 """
 
+import asyncio
 import secrets
 import threading
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from llm_agents_from_scratch import LLMAgent
+from llm_agents_from_scratch import LLMAgent, LLMAgentBuilder
 from llm_agents_from_scratch.base.tool import AsyncBaseTool, BaseTool
 from llm_agents_from_scratch.data_structures import (
     NextStepDecision,
@@ -29,10 +31,10 @@ from llm_agents_from_scratch.data_structures import (
     ToolCall,
     ToolCallResult,
 )
-from llm_agents_from_scratch.llms import OllamaLLM
-from llm_agents_from_scratch.tools import SimpleFunctionTool
 
-from agent_inspector.errors import (
+from agent_inspector.errors.session import (
+    AgentBuilderNotConfiguredError,
+    AgentBuildError,
     InvalidNeedTransitionError,
     MissingPendingResultError,
     NoPendingStepError,
@@ -66,31 +68,6 @@ _NEED_TRANSITIONS: dict[Need, frozenset[Need]] = {
 
 _SESSION_ID_PREFIX = "sess_"
 _SESSION_ID_TOKEN_BYTES = 8
-
-# M1 (issue #3) hardcodes exactly one real function tool, regardless of
-# what a client's ``function_tools`` request field names -- genuine
-# arbitrary function-tool registration is issue #8's (M2) job. This is
-# the TRD's running Hailstone-sequence example.
-NEXT_NUMBER_TOOL_NAME = "next_number"
-
-# Framework defaults, matching the framework's own ch08 examples
-# (`examples/ch08.ipynb`) and the TRD §6.1 request example.
-DEFAULT_OLLAMA_MODEL = "qwen3:14b"
-DEFAULT_THINK = False
-
-
-def next_number(x: int) -> int:
-    """Hailstone-sequence step function.
-
-    M1's one hardcoded real function tool (see ``NEXT_NUMBER_TOOL_NAME``).
-
-    Args:
-        x (int): The current value in the sequence.
-
-    Returns:
-        int: ``x // 2`` if ``x`` is even, else ``3 * x + 1``.
-    """
-    return x // 2 if x % 2 == 0 else 3 * x + 1
 
 
 @dataclass
@@ -376,10 +353,23 @@ class SessionService:
     session state that must not be recreated per request.
     """
 
-    def __init__(self) -> None:
-        """Initialize an empty SessionService."""
+    def __init__(self, agent_builder: LLMAgentBuilder | None = None) -> None:
+        """Initialize an empty SessionService.
+
+        Args:
+            agent_builder (LLMAgentBuilder | None, optional): The
+                CLI-discovered builder (see ``discovery.py``) that
+                ``create_session_from_config`` calls ``.build()`` on
+                once per new session. ``None`` until ``deps.py``'s
+                ``configure_agent_builder`` wires one up at CLI launch
+                time -- left optional (rather than required) so tests
+                that only exercise session lifecycle/need-machine
+                behavior (never session *creation*) can keep
+                constructing a bare ``SessionService()``.
+        """
         self._sessions: dict[str, Session] = {}
         self._registry_lock = threading.Lock()
+        self.agent_builder = agent_builder
 
     @staticmethod
     def _generate_session_id() -> str:
@@ -415,39 +405,27 @@ class SessionService:
             self._sessions[session_id] = session
         return session
 
-    async def create_session_from_config(
-        self,
-        *,
-        task: str,
-        model: str | None = None,
-        think: bool | None = None,
-        function_tools: Sequence[str] | None = None,
-    ) -> Session:
+    async def create_session_from_config(self, *, task: str) -> Session:
         """Build an ``LLMAgent``, start a supervised run, register it.
 
-        Implements TRD §6.1 (issue #3): builds an ``LLMAgent`` wired to
-        an ``OllamaLLM`` backbone and calls ``run_supervised(task)`` to
-        obtain the ``SupervisedTaskHandler``, then hands the resulting
-        agent/handler pair to ``create_session()``.
+        Implements TRD §6.1 (issue #3), reworked per ADR-002 (#47):
+        rather than constructing an ``LLMAgent`` from HTTP config, this
+        calls ``self.agent_builder.build()`` -- the ``LLMAgentBuilder``
+        that ``agent-inspector launch <script>`` discovered from the
+        user's own script (see ``discovery.py``) -- to obtain a fresh,
+        independent ``LLMAgent`` for this session, then calls
+        ``run_supervised(task)`` to obtain the ``SupervisedTaskHandler``
+        and hands the resulting agent/handler pair to
+        ``create_session()``.
 
-        M1 scope: only ``task``, ``model``, and ``think`` are actually
-        acted on. ``function_tools`` is accepted but ignored -- the
-        agent is always equipped with exactly one real tool,
-        ``next_number`` (see ``NEXT_NUMBER_TOOL_NAME``); genuine
-        arbitrary function-tool registration is issue #8 (M2).
-        ``skills_scopes``/``explicit_only_skills``/``mcp_servers`` are
-        M2/M3 scope and aren't parameters here -- the route layer
-        accepts and ignores them for now.
+        Every model/tools/skills/memory choice now lives in the
+        discovered builder rather than the request body; ``task`` is
+        the only thing that still varies per session (see ADR-002's
+        rationale for why that's inherent to "drive one task at a
+        time").
 
         Args:
             task (str): The task instruction.
-            model (str | None): Ollama model name. Defaults to
-                ``DEFAULT_OLLAMA_MODEL`` if not provided.
-            think (bool | None): Enable/disable Ollama thinking mode.
-                Defaults to ``DEFAULT_THINK`` if not provided.
-            function_tools (Sequence[str] | None): Names of function
-                tools requested by the client. Accepted for forward
-                compatibility but currently ignored -- see above.
 
         Returns:
             Session: The newly created, stored session, at
@@ -455,17 +433,28 @@ class SessionService:
 
         Raises:
             SessionConfigError: If ``task`` is blank.
+            AgentBuilderNotConfiguredError: If no ``agent_builder`` was
+                wired up (the process wasn't launched via
+                ``agent-inspector launch <script>``).
+            AgentBuildError: If the configured builder's ``build()``
+                raises.
         """
-        del function_tools  # M1: always registers next_number; see above.
-
         if not task or not task.strip():
             raise SessionConfigError("`task` must be a non-empty string.")
 
-        llm = OllamaLLM(
-            model=model or DEFAULT_OLLAMA_MODEL,
-            think=think if think is not None else DEFAULT_THINK,
-        )
-        agent = LLMAgent(llm=llm, tools=[SimpleFunctionTool(func=next_number)])
+        if self.agent_builder is None:
+            raise AgentBuilderNotConfiguredError
+
+        try:
+            agent = await self.agent_builder.build()
+        except asyncio.CancelledError:
+            # Let cancellation (client disconnect, timeout) propagate
+            # instead of being wrapped as a 502 -- this isn't a genuine
+            # build failure.
+            raise
+        except Exception as e:
+            raise AgentBuildError(e) from e
+
         handler = await agent.run_supervised(Task(instruction=task))
         return self.create_session(agent, handler)
 

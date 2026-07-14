@@ -82,6 +82,15 @@ ignore = [
   "A002" # Ignore variable `input` is shadowing a Python builtin in function
 ]
 
+[tool.ruff.lint.flake8-bugbear]
+# typer.Argument/typer.Option calls in a parameter default are the
+# library's own documented pattern for declaring CLI arguments/options
+# (see cli.py's `launch` command) -- not the accidental-mutable-default
+# footgun B008 exists to catch. Without this, any param whose type
+# annotation isn't on ruff's small hardcoded "immutable" allowlist
+# (e.g. `Path`, unlike `int`/`bool`) spuriously trips B008.
+extend-immutable-calls = ["typer.Argument", "typer.Option"]
+
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["D104"]
 "tests/**/*.py" = ["D"]
