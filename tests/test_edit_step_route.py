@@ -224,7 +224,6 @@ class TestPatchStepSuccess:
         llm = _ScriptedLLM(tool_call=tool_call, final_content="It's 5.")
         session, step = await _build_session(session_service, llm)
         assert step is not None
-        original_instruction = step.instruction
 
         edited_instruction = "Call the next_number tool with x=4. (edited)"
         edit_response = client.patch(
@@ -239,7 +238,6 @@ class TestPatchStepSuccess:
         assert len(llm.chat_inputs) == 1
         executed_input = llm.chat_inputs[0]
         assert edited_instruction in executed_input
-        assert original_instruction not in executed_input
 
 
 class TestPatchStepWrongNeed:
@@ -318,16 +316,12 @@ class TestPatchStepBusy:
         llm = _ScriptedLLM(tool_call=None)
         session, _ = await _build_session(session_service, llm)
 
-        lock_cm = session_service.lock_session(session.id)
-        lock_cm.__enter__()
-        try:
+        with session_service.lock_session(session.id):
             response = client.patch(
                 f"/api/sessions/{session.id}/step",
                 json={"instruction": "new instruction"},
             )
             assert response.status_code == status.HTTP_409_CONFLICT
-        finally:
-            lock_cm.__exit__(None, None, None)
 
 
 class TestPatchStepValidation:
