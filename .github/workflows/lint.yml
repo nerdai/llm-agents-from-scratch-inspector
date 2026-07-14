@@ -8,7 +8,7 @@ on:
       - opened
       - synchronize
 jobs:
-  lint-python:
+  lint-backend:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -33,7 +33,7 @@ jobs:
 
       - name: Run linter and formatter
         run: |
-          uv run make lint
+          uv run make lint-backend
 
   lint-frontend:
     runs-on: ubuntu-latest
@@ -58,3 +58,6 @@ jobs:
 
       - name: Run linter
         run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
