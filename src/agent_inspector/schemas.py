@@ -270,3 +270,15 @@ class SessionStateResponse(BaseModel):
     tool_call_history: list[ToolCallTraceOut]
     config: SessionConfigOut
     final_result: TaskResultOut | None = None
+
+
+class OllamaStatusResponse(BaseModel):
+    """Response body for ``GET /api/ollama/status`` (TRD §12, see #18).
+
+    Always a ``200`` -- an unreachable daemon is a normal outcome
+    (``reachable: False``), not an error surface. The UI's ``ollama
+    serve`` hint is driven by that flag, not an HTTP status code.
+    """
+
+    reachable: bool
+    version: str | None = None
