@@ -1,5 +1,5 @@
 interface ErrorBannerProps {
-  message: string;
+  message: string
 }
 
 function ErrorBanner({ message }: ErrorBannerProps) {
@@ -7,7 +7,7 @@ function ErrorBanner({ message }: ErrorBannerProps) {
     <div className="error-banner" role="alert">
       <strong>Request failed:</strong> {message}
     </div>
-  );
+  )
 }
 
-export default ErrorBanner;
+export default ErrorBanner

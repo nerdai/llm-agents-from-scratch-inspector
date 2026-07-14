@@ -1,11 +1,11 @@
-import type { Need, TaskResult } from "../api/types";
+import type { Need, TaskResult } from '../api/types'
 
 interface FinalResultCardProps {
-  result: TaskResult;
-  need: Need | null;
-  loading: boolean;
-  completedResult: TaskResult | null;
-  onApprove: () => void;
+  result: TaskResult
+  need: Need | null
+  loading: boolean
+  completedResult: TaskResult | null
+  onApprove: () => void
 }
 
 function FinalResultCard({
@@ -15,14 +15,16 @@ function FinalResultCard({
   completedResult,
   onApprove,
 }: FinalResultCardProps) {
-  const isDone = completedResult !== null;
-  const canApprove = need === "approve" && !loading && !isDone;
+  const isDone = completedResult !== null
+  const canApprove = need === 'approve' && !loading && !isDone
 
   return (
     <article className="call-card call-final">
       <header className="call-header">
         <span className="role-pill role-final">TaskResult</span>
-        {isDone && <span className="status-pill status-resolved">resolved</span>}
+        {isDone && (
+          <span className="status-pill status-resolved">resolved</span>
+        )}
       </header>
       <div className="call-body">
         <p className="kv-value final-content">
@@ -35,12 +37,12 @@ function FinalResultCard({
             disabled={!canApprove}
             onClick={onApprove}
           >
-            {loading ? "Completing…" : "Approve"}
+            {loading ? 'Completing…' : 'Approve'}
           </button>
         )}
       </div>
     </article>
-  );
+  )
 }
 
-export default FinalResultCard;
+export default FinalResultCard

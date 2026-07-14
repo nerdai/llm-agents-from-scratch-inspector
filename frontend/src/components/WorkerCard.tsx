@@ -1,19 +1,19 @@
-import type { RunStepResult, ToolCall } from "../api/types";
+import type { RunStepResult, ToolCall } from '../api/types'
 
 interface WorkerCardProps {
-  n: number;
-  result: RunStepResult;
-  toolCalls: ToolCall[];
-  stepCounter: number;
+  n: number
+  result: RunStepResult
+  toolCalls: ToolCall[]
+  stepCounter: number
 }
 
 function formatArgs(args: unknown): string {
-  if (args === null || args === undefined) return "";
-  if (typeof args === "string") return args;
+  if (args === null || args === undefined) return ''
+  if (typeof args === 'string') return args
   try {
-    return JSON.stringify(args);
+    return JSON.stringify(args)
   } catch {
-    return String(args);
+    return String(args)
   }
 }
 
@@ -32,7 +32,7 @@ function WorkerCard({ n, result, toolCalls, stepCounter }: WorkerCardProps) {
             <span className="kv-label">tool calls</span>
             {toolCalls.map((tc, i) => (
               <div
-                className={`tool-call${tc.error ? " tool-call-error" : ""}`}
+                className={`tool-call${tc.error ? ' tool-call-error' : ''}`}
                 key={`${tc.tool_name}-${i}`}
               >
                 <code className="tool-call-sig">
@@ -55,7 +55,7 @@ function WorkerCard({ n, result, toolCalls, stepCounter }: WorkerCardProps) {
         </div>
       </div>
     </article>
-  );
+  )
 }
 
-export default WorkerCard;
+export default WorkerCard
