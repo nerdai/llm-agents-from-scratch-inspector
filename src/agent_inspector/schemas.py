@@ -14,6 +14,7 @@ from llm_agents_from_scratch.data_structures import (
     TaskStep,
     TaskStepResult,
 )
+from llm_agents_from_scratch.data_structures.skill import SkillScope
 from pydantic import BaseModel, Field
 
 from agent_inspector.services.session import Need
@@ -26,10 +27,22 @@ class CreateSessionRequest(BaseModel):
     over HTTP -- they're fixed by the ``LLMAgentBuilder`` that
     ``agent-inspector launch <script>`` discovers from the user's own
     script (see ``discovery.py``). ``task`` is the only thing that
-    still varies per session.
+    still varies per session that way.
+
+    ``skills_scopes``/``explicit_only_skills`` (#9) are the one
+    exception: unlike model/tools/memories, they're call-time
+    arguments to the framework's own ``LLMAgent.run_supervised()``,
+    not ``LLMAgentBuilder`` construction config -- there's no
+    ``builder.with_skills_scopes(...)``-style method for a script to
+    fix a default through, so they stay legitimate per-request fields
+    here, passed straight through to ``run_supervised()``. Both are
+    optional and default to ``None``, which the framework itself
+    defaults to "scan both scopes" / "no skills hidden".
     """
 
     task: str = Field(min_length=1)
+    skills_scopes: list[SkillScope] | None = None
+    explicit_only_skills: set[str] | None = None
 
 
 TaskOut: TypeAlias = Task
@@ -42,18 +55,54 @@ this is a plain alias, not a copy that could drift from the real type.
 """
 
 
+class SkillOut(BaseModel):
+    """Wire representation of one of the session's discovered skills (#9).
+
+    Built from the framework's own ``Skill`` (``skills/skill.py``),
+    which isn't itself a Pydantic model, so -- unlike ``TaskOut``/
+    ``TaskStepOut`` above -- this is a real (if thin) mapping rather
+    than a plain ``TypeAlias``. ``scope`` couples directly to the
+    framework's own ``SkillScope`` enum per this project's convention
+    of preferring explicit coupling to the framework's real types over
+    shadowing them.
+
+    Attributes:
+        name (str): The skill's name (``Skill.frontmatter.name``, the
+            dict key in ``TaskHandler.skills``).
+        description (str): The skill's description
+            (``Skill.frontmatter.description``).
+        scope (SkillScope): Which scope the skill was discovered under
+            (``Skill.scope`` -- ``PROJECT`` takes precedence over
+            ``USER`` on a name collision).
+        explicit_only (bool): Whether this skill was requested as
+            ``explicit_only_skills`` for this session. The framework's
+            ``UseSkillTool`` hides such skills from the *model's*
+            visible tool catalog (its ``_visible`` list) while still
+            allowing the model to invoke them directly by name -- so
+            ``True`` here means "hidden from the catalog, not
+            unavailable."
+    """
+
+    name: str
+    description: str
+    scope: SkillScope
+    explicit_only: bool
+
+
 class CreateSessionResponse(BaseModel):
     """Response body for ``POST /api/sessions`` (TRD §6.1).
 
-    ``tools``/``skills`` are always empty for now -- surfacing the
-    discovered builder's real tools/skills is issue #8/#9's job, out
-    of scope for #47 (entrypoint discovery itself).
+    ``tools`` reflects the discovered builder's real, registered tool
+    names (``LLMAgent.tools_registry``, see #8). ``skills`` reflects
+    the real skills the framework discovered for this session
+    (``SupervisedTaskHandler.skills``, see #9), tagged with whether
+    each was requested as ``explicit_only_skills``.
     """
 
     session_id: str
     task: TaskOut
-    tools: list[str] = Field(default_factory=list)  # TODO(#8): real tools
-    skills: list[Any] = Field(default_factory=list)  # TODO(#9): real skills
+    tools: list[str] = Field(default_factory=list)
+    skills: list[SkillOut] = Field(default_factory=list)
     need: str
 
 
