@@ -5,9 +5,9 @@ The in-memory ``SessionStore`` foundation that owns the live
 busy lock, and the server-authoritative ``need`` state machine.
 ``SessionService.create_session_from_config()`` (see #3) builds the
 ``LLMAgent`` and calls ``run_supervised()``. ``SessionService.
-get_next_step`` (see #4), ``run_step`` (see #5), and ``complete`` (see
-#6) drive the ``need`` machine the rest of the way; ``reject``/
-``abort`` are wired up by later issues (#11-#14).
+get_next_step`` (see #4), ``run_step`` (see #5), ``complete`` (see
+#6), and ``reject`` (see #11) drive the ``need`` machine the rest of
+the way; ``abort`` is wired up by a later issue (#12).
 """
 
 import secrets
@@ -732,3 +732,44 @@ class SessionService:
         session.pending_result = None
         self.transition_need(session, "done")
         return result
+
+    def reject(self, session: Session, feedback: str) -> RejectedTaskResult:
+        """Reject the session's pending ``TaskResult`` (see #11).
+
+        Per TRD §6.5: requires ``session.need == "approve"``; calls the
+        framework's ``SupervisedTaskHandler.reject(result, feedback)`` --
+        a pure, synchronous constructor with no side effects on the
+        handler itself. The caller (this method) is responsible for
+        wiring the returned ``RejectedTaskResult`` into session state:
+        it's stored as ``session.last_step_result`` so the next
+        ``get_next_step()`` call (#4) reads it and routes deterministically
+        to a new ``TaskStep``, no LLM call.
+
+        Args:
+            session (Session): The session to reject the pending result
+                for. Callers should obtain this via ``lock_session()``
+                so the mutation is serialized against other calls on
+                the same session.
+            feedback (str): The operator's correction rationale.
+
+        Returns:
+            RejectedTaskResult: The rejection, now stored as
+                ``session.last_step_result``.
+
+        Raises:
+            WrongNeedError: If ``session.need != "approve"``.
+            MissingPendingResultError: If ``session.need == "approve"``
+                but ``session.pending_result`` is unset (indicates a
+                bug upstream, not a client error).
+        """
+        self.require_need(session, "approve")
+        result = session.pending_result
+        if result is None:
+            raise MissingPendingResultError(session.id)
+
+        rejected: RejectedTaskResult = session.handler.reject(result, feedback)
+
+        session.pending_result = None
+        session.last_step_result = rejected
+        self.transition_need(session, "next")
+        return rejected
