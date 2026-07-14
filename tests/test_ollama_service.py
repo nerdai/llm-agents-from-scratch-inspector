@@ -66,6 +66,51 @@ class TestGetStatus:
         assert reachable is False
         assert version is None
 
+    async def test_non_json_body_returns_reachable_with_no_version(
+        self,
+    ) -> None:
+        """A ``200`` with a non-JSON body -> still reachable, no version."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, content=b"not json")
+
+        service = OllamaService(transport=httpx.MockTransport(handler))
+
+        reachable, version = await service.get_status()
+
+        assert reachable is True
+        assert version is None
+
+    async def test_json_array_body_returns_reachable_with_no_version(
+        self,
+    ) -> None:
+        """Valid JSON that isn't an object -> reachable, no version."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=["not", "a", "dict"])
+
+        service = OllamaService(transport=httpx.MockTransport(handler))
+
+        reachable, version = await service.get_status()
+
+        assert reachable is True
+        assert version is None
+
+    async def test_non_string_version_returns_reachable_with_no_version(
+        self,
+    ) -> None:
+        """A non-string ``version`` value is treated as absent, not raised."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"version": 123})
+
+        service = OllamaService(transport=httpx.MockTransport(handler))
+
+        reachable, version = await service.get_status()
+
+        assert reachable is True
+        assert version is None
+
     async def test_uses_configured_host(self) -> None:
         """The configured ``host`` is what actually gets requested."""
         seen_urls = []

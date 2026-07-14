@@ -49,7 +49,11 @@ class OllamaService:
             tuple[bool, str | None]: ``(reachable, version)``.
             ``version`` is ``None`` whenever ``reachable`` is ``False``
             (connection refused, timeout, or a non-2xx response --
-            e.g. the daemon starting up but not ready yet).
+            e.g. the daemon starting up but not ready yet), and also
+            when ``reachable`` is ``True`` but the response body
+            wasn't the JSON object with a string ``version`` we
+            expected -- reachability shouldn't hinge on the daemon's
+            response shape being exactly right.
         """
         try:
             async with httpx.AsyncClient(
@@ -60,4 +64,11 @@ class OllamaService:
                 response.raise_for_status()
         except httpx.HTTPError:
             return False, None
-        return True, response.json().get("version")
+
+        try:
+            body = response.json()
+        except ValueError:
+            return True, None
+
+        version = body.get("version") if isinstance(body, dict) else None
+        return True, version if isinstance(version, str) else None
