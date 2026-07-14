@@ -8,7 +8,11 @@ itself -- no FastAPI imports here.
 
 from typing import Any, TypeAlias
 
-from llm_agents_from_scratch.data_structures import Task, TaskStepResult
+from llm_agents_from_scratch.data_structures import (
+    RejectedTaskResult,
+    Task,
+    TaskStepResult,
+)
 from pydantic import BaseModel, Field
 
 from agent_inspector.services.session import Need
@@ -72,4 +76,24 @@ class RunStepResponse(BaseModel):
     result: TaskStepResultOut
     tool_calls: list[ToolCallTraceOut]
     step_counter: int
+    need: Need
+
+
+class RejectRequest(BaseModel):
+    """Request body for ``POST /api/sessions/{id}/reject`` (see #11)."""
+
+    feedback: str = Field(min_length=1)
+
+
+RejectedTaskResultOut: TypeAlias = RejectedTaskResult
+"""Wire representation of the framework's ``RejectedTaskResult`` -- a
+plain alias, same rationale as ``TaskOut``/``TaskStepResultOut`` above:
+its fields (``failed_result_content``, ``feedback``) already match the
+TRD §6.5 response shape exactly."""
+
+
+class RejectResponse(BaseModel):
+    """Response body for ``POST /api/sessions/{id}/reject`` (see #11)."""
+
+    rejected: RejectedTaskResultOut
     need: Need
