@@ -99,3 +99,91 @@ class InvalidNeedTransitionError(SessionServiceError):
             f"Session {session_id!r} cannot transition from "
             f"{current!r} to {target!r}.",
         )
+
+
+class SessionConfigError(SessionServiceError):
+    """Raised when the config for a new session is invalid.
+
+    Route layer should map this to ``422``.
+    """
+
+    def __init__(self, message: str) -> None:
+        """Initialize a SessionConfigError.
+
+        Args:
+            message (str): Human-readable description of what's wrong
+                with the supplied config.
+        """
+        self.message = message
+        super().__init__(message)
+
+
+class NoPendingStepError(SessionServiceError):
+    """Raised when ``run_step`` is called but no ``TaskStep`` is pending.
+
+    This indicates a server-side invariant violation: ``need == "run"``
+    is only ever set alongside a recorded ``pending_step`` (by the
+    next-step endpoint, issue #4). Route layer should map this to
+    ``500``.
+    """
+
+    def __init__(self, session_id: str) -> None:
+        """Initialize a NoPendingStepError.
+
+        Args:
+            session_id (str): The affected session's identifier.
+        """
+        self.session_id = session_id
+        super().__init__(
+            f"Session {session_id!r} has need='run' but no pending "
+            "TaskStep is recorded.",
+        )
+
+
+class MissingPendingResultError(SessionServiceError):
+    """Raised when a session is at ``need="approve"`` with no pending result.
+
+    ``require_need(session, "approve")`` guarantees the ``need`` is
+    correct, but not that ``session.pending_result`` was actually
+    populated; if it's missing here that's a bug in whatever
+    transitioned the session into ``"approve"`` (``get_next_step``, #4),
+    not a client error. Route layer should map this to ``500``.
+    """
+
+    def __init__(self, session_id: str) -> None:
+        """Initialize a MissingPendingResultError.
+
+        Args:
+            session_id (str): The affected session's identifier.
+        """
+        self.session_id = session_id
+        super().__init__(
+            f"Session {session_id!r} is at need='approve' but has no "
+            "pending_result stored.",
+        )
+
+
+class StepExecutionError(SessionServiceError):
+    """Raised when the framework raises while executing a step.
+
+    Wraps whatever exception ``SupervisedTaskHandler.run_step()``
+    propagates (e.g. an LLM/network failure of the backbone LLM).
+    Failed *tool calls* do not raise -- the framework already reports
+    those as a ``ToolCallResult(error=True, ...)`` -- so this is
+    reserved for LLM/framework-level failures. Route layer should map
+    this to ``502``.
+    """
+
+    def __init__(self, session_id: str, cause: Exception) -> None:
+        """Initialize a StepExecutionError.
+
+        Args:
+            session_id (str): The affected session's identifier.
+            cause (Exception): The underlying exception raised by the
+                framework.
+        """
+        self.session_id = session_id
+        super().__init__(
+            f"Session {session_id!r} failed to execute its pending "
+            f"step: {cause}",
+        )

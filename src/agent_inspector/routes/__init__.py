@@ -13,7 +13,8 @@ prefix.
 
 from fastapi import APIRouter
 
-from agent_inspector.routes import health
+from agent_inspector.routes import health, session
 
 router = APIRouter(prefix="/api")
 router.include_router(health.router)
+router.include_router(session.router)
