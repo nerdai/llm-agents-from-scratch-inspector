@@ -74,7 +74,7 @@ class CreateSessionResponse(BaseModel):
     session_id: str
     task: TaskOut
     tools: list[str]
-    skills: list[Any] = []
+    skills: list[Any] = Field(default_factory=list)
     need: str
 
 

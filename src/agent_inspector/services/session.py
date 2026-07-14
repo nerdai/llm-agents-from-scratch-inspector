@@ -273,13 +273,15 @@ class Session:
         id (str): Opaque session identifier (``sess_`` + random token).
         agent (LLMAgent): The live ``LLMAgent`` driving this session.
         handler (Any): The live ``SupervisedTaskHandler`` for this
-            session. Typed ``Any`` rather than imported from the
-            framework because the pinned ``llm-agents-from-scratch``
-            release this package depends on predates the
-            ``SupervisedTaskHandler``/``run_supervised()`` API (added
-            upstream but not yet released); once that lands, callers
-            can rely on it exposing ``get_next_step``, ``run_step``,
-            ``complete``, ``reject``, and ``abort``.
+            session, as returned by ``LLMAgent.run_supervised()``.
+            Typed ``Any`` rather than the real type because
+            ``SupervisedTaskHandler`` is a nested class
+            (``LLMAgent.SupervisedTaskHandler``) rather than a
+            top-level, independently importable name; a ``Protocol``
+            covering the ``get_next_step``/``run_step``/``complete``/
+            ``reject``/``abort`` surface this code actually calls
+            would be a cleaner fit than importing the nested type
+            directly, but hasn't been introduced yet.
         need (Need): The server-authoritative state the session is
             waiting in. Defaults to ``"next"``.
         pending_step (TaskStep | None): The ``TaskStep`` currently

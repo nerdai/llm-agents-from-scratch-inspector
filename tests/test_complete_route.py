@@ -10,9 +10,9 @@ FastAPI's ``TestClient``.
 
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import AsyncMock
 
+import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
 from llm_agents_from_scratch import LLMAgent
@@ -27,12 +27,25 @@ from llm_agents_from_scratch.memory.memory import Memory
 
 from agent_inspector.deps import get_session_service
 from agent_inspector.server import create_app
-from agent_inspector.services.session import Session
+from agent_inspector.services.session import Session, SessionService
 
-client = TestClient(create_app(serve_static=False))
+
+@pytest.fixture()
+def session_service() -> SessionService:
+    """A fresh, isolated ``SessionService`` for each test."""
+    return SessionService()
+
+
+@pytest.fixture()
+def client(session_service: SessionService) -> TestClient:
+    """A ``TestClient`` wired to ``session_service`` via dep override."""
+    app = create_app(serve_static=False)
+    app.dependency_overrides[get_session_service] = lambda: session_service
+    return TestClient(app)
 
 
 async def _drive_session_to_approve(
+    session_service: SessionService,
     *,
     memories: list[Memory] | None = None,
 ) -> tuple[Session, TaskResult]:
@@ -42,6 +55,12 @@ async def _drive_session_to_approve(
     ``get_next_step`` makes) to immediately decide ``final_result``, so
     no real LLM/Ollama call is made -- mirrors the framework's own
     ``mock_llm`` fixture pattern.
+
+    Args:
+        session_service (SessionService): The service to register the
+            session on.
+        memories (list[Memory] | None): Memories to attach to the
+            agent, if any.
 
     Returns:
         tuple[Session, TaskResult]: The registered session (already
@@ -72,7 +91,6 @@ async def _drive_session_to_approve(
     final_result = await handler.get_next_step(step_result)
     assert isinstance(final_result, TaskResult)
 
-    session_service = get_session_service()
     session = session_service.create_session(agent=agent, handler=handler)
     session.pending_result = final_result
     session_service.transition_need(session, "approve")
@@ -80,91 +98,122 @@ async def _drive_session_to_approve(
     return session, final_result
 
 
-def test_complete_returns_resolved_status_and_done_need() -> None:
-    """Happy path: 200 with resolved status, result payload, need=done."""
-    session, expected_result = asyncio.run(_drive_session_to_approve())
+class TestPostComplete:
+    """``POST /api/sessions/{id}/complete`` (TRD §6.4)."""
 
-    response = client.post(f"/api/sessions/{session.id}/complete")
+    async def test_complete_returns_resolved_status_and_done_need(
+        self,
+        client: TestClient,
+        session_service: SessionService,
+    ) -> None:
+        """Happy path: 200 with resolved status, result payload, need=done."""
+        session, expected_result = await _drive_session_to_approve(
+            session_service,
+        )
 
-    assert response.status_code == status.HTTP_200_OK
-    assert response.json() == {
-        "status": "resolved",
-        "result": {
-            "task_id": expected_result.task_id,
-            "content": expected_result.content,
-        },
-        "need": "done",
-    }
+        response = client.post(f"/api/sessions/{session.id}/complete")
 
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json() == {
+            "status": "resolved",
+            "result": {
+                "task_id": expected_result.task_id,
+                "content": expected_result.content,
+            },
+            "need": "done",
+        }
 
-def test_complete_transitions_session_need_to_done() -> None:
-    """The session's need is updated to 'done' in the session store."""
-    session, _ = asyncio.run(_drive_session_to_approve())
+    async def test_complete_transitions_session_need_to_done(
+        self,
+        client: TestClient,
+        session_service: SessionService,
+    ) -> None:
+        """The session's need is updated to 'done' in the session store."""
+        session, _ = await _drive_session_to_approve(session_service)
 
-    client.post(f"/api/sessions/{session.id}/complete")
+        client.post(f"/api/sessions/{session.id}/complete")
 
-    assert session.need == "done"
+        assert session.need == "done"
 
+    async def test_complete_clears_pending_result(
+        self,
+        client: TestClient,
+        session_service: SessionService,
+    ) -> None:
+        """The pending result is consumed (cleared) once approved."""
+        session, _ = await _drive_session_to_approve(session_service)
 
-def test_complete_clears_pending_result() -> None:
-    """The pending result is consumed (cleared) once approved."""
-    session, _ = asyncio.run(_drive_session_to_approve())
+        client.post(f"/api/sessions/{session.id}/complete")
 
-    client.post(f"/api/sessions/{session.id}/complete")
+        assert session.pending_result is None
 
-    assert session.pending_result is None
+    async def test_complete_resolves_the_handler_future(
+        self,
+        client: TestClient,
+        session_service: SessionService,
+    ) -> None:
+        """handler.complete() resolves the underlying asyncio.Future."""
+        session, expected_result = await _drive_session_to_approve(
+            session_service,
+        )
 
+        client.post(f"/api/sessions/{session.id}/complete")
 
-def test_complete_resolves_the_handler_future() -> None:
-    """handler.complete() resolves the underlying asyncio.Future."""
-    session, expected_result = asyncio.run(_drive_session_to_approve())
+        assert session.handler.done()
+        assert session.handler.result() == expected_result
 
-    client.post(f"/api/sessions/{session.id}/complete")
+    async def test_complete_records_memory(
+        self,
+        client: TestClient,
+        session_service: SessionService,
+    ) -> None:
+        """handler.complete() writes an episode to configured memories."""
+        mock_memory = AsyncMock(spec=Memory)
+        mock_memory.recall.return_value = ""
+        session, _ = await _drive_session_to_approve(
+            session_service,
+            memories=[mock_memory],
+        )
 
-    assert session.handler.done()
-    assert session.handler.result() == expected_result
+        client.post(f"/api/sessions/{session.id}/complete")
 
+        mock_memory.record.assert_awaited_once()
 
-def test_complete_records_memory() -> None:
-    """handler.complete() writes an episode to configured memories."""
-    mock_memory = AsyncMock(spec=Memory)
-    mock_memory.recall.return_value = ""
-    session, _ = asyncio.run(
-        _drive_session_to_approve(memories=[mock_memory]),
-    )
+    async def test_complete_second_call_returns_409(
+        self,
+        client: TestClient,
+        session_service: SessionService,
+    ) -> None:
+        """Calling complete twice: the second call 409s (need is now done)."""
+        session, _ = await _drive_session_to_approve(session_service)
 
-    client.post(f"/api/sessions/{session.id}/complete")
+        first = client.post(f"/api/sessions/{session.id}/complete")
+        second = client.post(f"/api/sessions/{session.id}/complete")
 
-    mock_memory.record.assert_awaited_once()
+        assert first.status_code == status.HTTP_200_OK
+        assert second.status_code == status.HTTP_409_CONFLICT
 
+    async def test_complete_wrong_need_returns_409(
+        self,
+        client: TestClient,
+        session_service: SessionService,
+    ) -> None:
+        """A session not at need='approve' (still 'next') 409s."""
+        llm = AsyncMock()
+        agent = LLMAgent(llm=llm)
+        task = Task(instruction="do something")
+        handler = await agent.run_supervised(task)
+        session = session_service.create_session(agent=agent, handler=handler)
 
-def test_complete_second_call_returns_409() -> None:
-    """Calling complete twice: the second call 409s (need is now done)."""
-    session, _ = asyncio.run(_drive_session_to_approve())
+        response = client.post(f"/api/sessions/{session.id}/complete")
 
-    first = client.post(f"/api/sessions/{session.id}/complete")
-    second = client.post(f"/api/sessions/{session.id}/complete")
+        assert response.status_code == status.HTTP_409_CONFLICT
 
-    assert first.status_code == status.HTTP_200_OK
-    assert second.status_code == status.HTTP_409_CONFLICT
+    async def test_complete_unknown_session_returns_404(
+        self,
+        client: TestClient,
+    ) -> None:
+        """An unknown session id 404s."""
+        response = client.post("/api/sessions/sess_does-not-exist/complete")
 
-
-def test_complete_wrong_need_returns_409() -> None:
-    """A session not at need='approve' (still 'next') 409s."""
-    session_service = get_session_service()
-    llm = AsyncMock()
-    agent = LLMAgent(llm=llm)
-    task = Task(instruction="do something")
-    handler = asyncio.run(agent.run_supervised(task))
-    session = session_service.create_session(agent=agent, handler=handler)
-
-    response = client.post(f"/api/sessions/{session.id}/complete")
-
-    assert response.status_code == status.HTTP_409_CONFLICT
-
-
-def test_complete_unknown_session_returns_404() -> None:
-    """An unknown session id 404s."""
-    response = client.post("/api/sessions/sess_does-not-exist/complete")
-
-    assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert response.status_code == status.HTTP_404_NOT_FOUND
