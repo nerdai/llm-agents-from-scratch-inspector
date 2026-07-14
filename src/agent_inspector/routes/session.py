@@ -208,7 +208,7 @@ async def get_default_templates() -> TemplatesOut:
         TemplatesOut: All 11 keys of the framework's
             ``LLMAgentTemplates``.
     """
-    return get_templates()
+    return TemplatesOut(**get_templates())
 
 
 @router.post("/sessions/{session_id}/next-step")

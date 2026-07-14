@@ -8,7 +8,6 @@ itself -- no FastAPI imports here.
 
 from typing import Any, Literal, TypeAlias
 
-from llm_agents_from_scratch.agent.templates import LLMAgentTemplates
 from llm_agents_from_scratch.data_structures import (
     RejectedTaskResult,
     Task,
@@ -153,14 +152,34 @@ class RolloutResponse(BaseModel):
     rollout: str
 
 
-TemplatesOut: TypeAlias = LLMAgentTemplates
-"""Wire representation of ``GET /api/templates`` (TRD §6.9, see #15).
+class TemplatesOut(BaseModel):
+    """Wire representation of ``GET /api/templates`` (TRD §6.9, see #15).
 
-A plain alias to the framework's own ``LLMAgentTemplates`` ``TypedDict``
--- same rationale as ``TaskOut``/``TaskStepResultOut`` above: all 11
-keys are returned verbatim (per the issue's own recommendation --
-simplest, most future-proof), so there's no curated subset that could
-drift from the framework's own type."""
+    Not a ``TypeAlias`` to the framework's own ``LLMAgentTemplates``
+    like ``TaskOut``/``TaskStepResultOut`` above, unlike those: it's a
+    ``TypedDict`` (not a Pydantic ``BaseModel``), and Pydantic can only
+    build a schema for a ``typing.TypedDict`` on Python >= 3.12 --
+    this project supports 3.10+, so using it directly as a FastAPI
+    response type breaks on 3.10/3.11 (confirmed via CI:
+    ``PydanticUserError: Please use typing_extensions.TypedDict``).
+    A real ``BaseModel`` with the same 11 fields, populated from
+    ``default_templates`` by keyword unpacking, sidesteps that
+    entirely while still returning all 11 keys verbatim (per the
+    issue's own recommendation -- simplest, most future-proof, no
+    curated subset to drift from the framework's own type).
+    """
+
+    system_message: str
+    get_next_step: str
+    step_rollout_chat_message: str
+    step_rollout_content_instruction: str
+    step_rollout_content_tool_call_request: str
+    run_step_system_message_without_rollout: str
+    run_step_system_message: str
+    run_step_user_message: str
+    skills_catalog: str
+    memories: str
+    approval_rejection_feedback: str
 
 
 class SessionConfigOut(BaseModel):
