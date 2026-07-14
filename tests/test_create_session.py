@@ -1,132 +1,140 @@
-"""Tests for session creation (issue #3, TRD §6.1).
+"""Tests for session creation (issue #3, reworked by #47/ADR-002).
 
 Covers both layers:
     * ``SessionService.create_session_from_config`` -- the business
-      logic that builds the ``LLMAgent``/``OllamaLLM``, calls
+      logic that calls the configured ``LLMAgentBuilder.build()`` and
       ``run_supervised()``, and registers the session.
     * ``POST /api/sessions`` -- the thin route wrapping it, including
       the request/response shape and the ``422`` on invalid config.
 
-``OllamaLLM`` builds an ``ollama.AsyncClient`` at construction time but
-makes no network call there, and ``run_supervised()`` doesn't touch the
-LLM at all (no memories configured => ``load_memories()`` is a no-op).
-So constructing a real session doesn't require a reachable Ollama
-daemon -- but we still patch ``AsyncClient`` the same way the upstream
-framework's own tests do (see
-``llm-agents-from-scratch/tests/llms/test_ollama.py``), both to mirror
-that project's own test pattern and as a safety net against any future
-network access creeping into ``OllamaLLM.__init__``.
+Per ADR-002, sessions are no longer built from HTTP config
+(``model``/``think``/``function_tools``): they're built by calling
+``.build()`` on an ``LLMAgentBuilder`` that ``agent-inspector launch
+<script>`` would have discovered from the user's own script. Tests
+here stand in for that discovered builder with a fixture
+``LLMAgentBuilder`` wired to a network-free ``BaseLLM``, following the
+same pattern as ``test_next_step_route.py``'s ``_MockBaseLLM``, and
+inject it into ``SessionService`` directly (the same role
+``deps.configure_agent_builder`` plays at real CLI-launch time).
 """
 
-from __future__ import annotations
-
-from unittest.mock import MagicMock, patch
+from typing import Any, Sequence
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
-from llm_agents_from_scratch.agent.llm_agent import LLMAgent
-from llm_agents_from_scratch.llms.ollama import OllamaLLM
-
-from agent_inspector.errors import SessionConfigError
-from agent_inspector.server import create_app
-from agent_inspector.services.session import (
-    DEFAULT_OLLAMA_MODEL,
-    DEFAULT_THINK,
-    NEXT_NUMBER_TOOL_NAME,
-    SessionService,
-    next_number,
+from llm_agents_from_scratch import LLMAgent, LLMAgentBuilder
+from llm_agents_from_scratch.base.llm import BaseLLM, StructuredOutputType
+from llm_agents_from_scratch.base.tool import Tool
+from llm_agents_from_scratch.data_structures import (
+    ChatMessage,
+    ChatRole,
+    CompleteResult,
+    NextStepDecision,
+    ToolCallResult,
 )
 
-_OLLAMA_ASYNC_CLIENT = "llm_agents_from_scratch.llms.ollama.llm.AsyncClient"
+from agent_inspector.deps import get_session_service
+from agent_inspector.errors import (
+    AgentBuilderNotConfiguredError,
+    AgentBuildError,
+    SessionConfigError,
+)
+from agent_inspector.server import create_app
+from agent_inspector.services.session import SessionService
 
 _HAILSTONE_TASK = "Compute the full Hailstone sequence starting from 4."
 
 
-def test_next_number_is_the_hailstone_step_function() -> None:
-    """``next_number`` matches the TRD's running Hailstone example."""
-    even_input, odd_input = 4, 1
+class _MockBaseLLM(BaseLLM):
+    """Network-free ``BaseLLM`` stand-in, mirroring the pattern used in
+    ``test_next_step_route.py``.
 
-    assert next_number(even_input) == even_input // 2
-    assert next_number(odd_input) == 3 * odd_input + 1
+    Only ``structured_output`` -- the call ``SupervisedTaskHandler.
+    get_next_step`` makes -- matters for these tests; the rest is
+    implemented purely to satisfy ``BaseLLM``'s abstract interface.
+    """
+
+    async def complete(self, prompt: str, **kwargs: Any) -> CompleteResult:
+        """Unused here; provided to satisfy BaseLLM."""
+        return CompleteResult(response="mock complete", prompt=prompt)
+
+    async def structured_output(
+        self,
+        prompt: str,
+        mdl: type[StructuredOutputType],
+        **kwargs: Any,
+    ) -> StructuredOutputType:
+        """Unused on the create-session path; provided to satisfy BaseLLM."""
+        return NextStepDecision(  # type: ignore[return-value]
+            kind="final_result",
+            content="",
+        )
+
+    async def chat(
+        self,
+        input: str,
+        chat_history: Sequence[ChatMessage] | None = None,
+        tools: Sequence[Tool] | None = None,
+        **kwargs: Any,
+    ) -> tuple[ChatMessage, ChatMessage]:
+        """Unused here; provided to satisfy BaseLLM."""
+        return (
+            ChatMessage(role=ChatRole.USER, content=input),
+            ChatMessage(role=ChatRole.ASSISTANT, content="mock chat response"),
+        )
+
+    async def continue_chat_with_tool_results(
+        self,
+        tool_call_results: Sequence[ToolCallResult],
+        chat_history: Sequence[ChatMessage],
+        tools: Sequence[Tool] | None = None,
+        **kwargs: Any,
+    ) -> tuple[list[ChatMessage], ChatMessage]:
+        """Unused here; provided to satisfy BaseLLM."""
+        return ([], ChatMessage(role=ChatRole.ASSISTANT, content="mock tool"))
+
+
+@pytest.fixture
+def agent_builder() -> LLMAgentBuilder:
+    """A fixture ``LLMAgentBuilder`` standing in for a discovered one."""
+    return LLMAgentBuilder(llm=_MockBaseLLM())
 
 
 class TestCreateSessionFromConfig:
     """``SessionService.create_session_from_config`` (service layer)."""
 
-    @patch(_OLLAMA_ASYNC_CLIENT)
-    async def test_builds_agent_with_next_number_tool(
+    async def test_builds_agent_via_configured_builder(
         self,
-        mock_async_client_class: MagicMock,
+        agent_builder: LLMAgentBuilder,
     ) -> None:
-        """The agent always gets exactly the ``next_number`` tool."""
-        mock_async_client_class.return_value = MagicMock()
-        service = SessionService()
+        """The agent is whatever the configured builder's build() returns."""
+        service = SessionService(agent_builder=agent_builder)
 
         session = await service.create_session_from_config(task=_HAILSTONE_TASK)
 
         assert isinstance(session.agent, LLMAgent)
-        assert set(session.agent.tools_registry) == {NEXT_NUMBER_TOOL_NAME}
+        assert session.agent.llm is agent_builder.llm
 
-    @patch(_OLLAMA_ASYNC_CLIENT)
-    async def test_uses_default_model_and_think_when_omitted(
+    async def test_calls_build_once_per_session(
         self,
-        mock_async_client_class: MagicMock,
+        agent_builder: LLMAgentBuilder,
     ) -> None:
-        """Omitting ``model``/``think`` falls back to framework defaults."""
-        mock_async_client_class.return_value = MagicMock()
-        service = SessionService()
+        """Each new session gets its own, independently-built LLMAgent."""
+        service = SessionService(agent_builder=agent_builder)
 
-        session = await service.create_session_from_config(task="do a thing")
+        first = await service.create_session_from_config(task="task one")
+        second = await service.create_session_from_config(task="task two")
 
-        assert isinstance(session.agent.llm, OllamaLLM)
-        assert session.agent.llm.model == DEFAULT_OLLAMA_MODEL
-        assert session.agent.llm.think == DEFAULT_THINK
+        assert first.agent is not second.agent
 
-    @patch(_OLLAMA_ASYNC_CLIENT)
-    async def test_uses_requested_model_and_think(
-        self,
-        mock_async_client_class: MagicMock,
-    ) -> None:
-        """An explicit ``model``/``think`` overrides the defaults."""
-        mock_async_client_class.return_value = MagicMock()
-        service = SessionService()
-
-        session = await service.create_session_from_config(
-            task="do a thing",
-            model="llama3.2",
-            think=True,
-        )
-
-        llm = session.agent.llm
-        assert isinstance(llm, OllamaLLM)
-        assert llm.model == "llama3.2"
-        assert llm.think is True
-
-    @patch(_OLLAMA_ASYNC_CLIENT)
-    async def test_ignores_unknown_function_tool_names(
-        self,
-        mock_async_client_class: MagicMock,
-    ) -> None:
-        """Only ``next_number`` is ever registered, regardless of input."""
-        mock_async_client_class.return_value = MagicMock()
-        service = SessionService()
-
-        session = await service.create_session_from_config(
-            task="do a thing",
-            function_tools=["some_other_tool", NEXT_NUMBER_TOOL_NAME],
-        )
-
-        assert set(session.agent.tools_registry) == {NEXT_NUMBER_TOOL_NAME}
-
-    @patch(_OLLAMA_ASYNC_CLIENT)
     async def test_starts_supervised_handler_at_need_next(
         self,
-        mock_async_client_class: MagicMock,
+        agent_builder: LLMAgentBuilder,
     ) -> None:
         """A freshly created session's handler is seeded from ``task``."""
-        mock_async_client_class.return_value = MagicMock()
-        service = SessionService()
+        service = SessionService(agent_builder=agent_builder)
 
         session = await service.create_session_from_config(task=_HAILSTONE_TASK)
 
@@ -135,159 +143,147 @@ class TestCreateSessionFromConfig:
         assert session.handler.task.instruction == _HAILSTONE_TASK
         assert session.handler.task.id_
 
-    @patch(_OLLAMA_ASYNC_CLIENT)
     async def test_registered_session_is_retrievable(
         self,
-        mock_async_client_class: MagicMock,
+        agent_builder: LLMAgentBuilder,
     ) -> None:
         """The returned session is the one stored in the registry."""
-        mock_async_client_class.return_value = MagicMock()
-        service = SessionService()
+        service = SessionService(agent_builder=agent_builder)
 
         session = await service.create_session_from_config(task="do a thing")
 
         assert service.get_session(session.id) is session
 
     @pytest.mark.parametrize("blank_task", ["", "   ", "\n\t"])
-    @patch(_OLLAMA_ASYNC_CLIENT)
     async def test_blank_task_raises_session_config_error(
         self,
-        mock_async_client_class: MagicMock,
+        agent_builder: LLMAgentBuilder,
         blank_task: str,
     ) -> None:
         """A blank (or whitespace-only) task is rejected as bad config."""
-        mock_async_client_class.return_value = MagicMock()
-        service = SessionService()
+        service = SessionService(agent_builder=agent_builder)
 
         with pytest.raises(SessionConfigError):
             await service.create_session_from_config(task=blank_task)
 
+    async def test_no_configured_builder_raises(self) -> None:
+        """No ``agent_builder`` wired up -> a clear domain error, not a crash"""
+        service = SessionService()
 
-def _client() -> TestClient:
-    """Build a ``TestClient`` for the API-only app (no static assets)."""
-    return TestClient(create_app(serve_static=False))
+        with pytest.raises(AgentBuilderNotConfiguredError):
+            await service.create_session_from_config(task="do a thing")
+
+    async def test_builder_build_failure_is_wrapped(self) -> None:
+        """A failure inside the builder's own ``build()`` is wrapped."""
+        broken_builder = AsyncMock(spec=LLMAgentBuilder)
+        broken_builder.build.side_effect = RuntimeError("mcp unreachable")
+        service = SessionService(agent_builder=broken_builder)
+
+        with pytest.raises(AgentBuildError):
+            await service.create_session_from_config(task="do a thing")
+
+
+def _client(session_service: SessionService) -> TestClient:
+    """Build a ``TestClient`` wired to ``session_service`` via dep override."""
+    app = create_app(serve_static=False)
+    app.dependency_overrides[get_session_service] = lambda: session_service
+    return TestClient(app)
 
 
 class TestCreateSessionRoute:
     """``POST /api/sessions`` (route layer, TRD §6.1)."""
 
-    @patch(_OLLAMA_ASYNC_CLIENT)
     def test_returns_expected_response_shape(
         self,
-        mock_async_client_class: MagicMock,
+        agent_builder: LLMAgentBuilder,
     ) -> None:
         """A well-formed request gets back the TRD §6.1 response shape."""
-        mock_async_client_class.return_value = MagicMock()
-        client = _client()
+        client = _client(SessionService(agent_builder=agent_builder))
 
         response = client.post(
             "/api/sessions",
-            json={
-                "task": (
-                    "Compute the full Hailstone sequence starting from "
-                    "4, step by step using next_number, until you reach 1."
-                ),
-                "model": "qwen3:14b",
-                "think": False,
-                "function_tools": [
-                    {
-                        "name": "next_number",
-                        "signature": "next_number(x: int) -> int",
-                        "source": "def next_number(x: int) -> int: ...",
-                    },
-                ],
-            },
+            json={"task": _HAILSTONE_TASK},
         )
 
         assert response.status_code == status.HTTP_201_CREATED
         body = response.json()
         assert body["session_id"].startswith("sess_")
-        assert body["task"]["instruction"].startswith(
-            "Compute the full Hailstone sequence",
-        )
+        assert body["task"]["instruction"] == _HAILSTONE_TASK
         assert isinstance(body["task"]["id_"], str)
         assert body["task"]["id_"]
-        assert body["tools"] == ["next_number"]
+        assert body["tools"] == []  # TODO(#8): real tools
         assert body["skills"] == []
         assert body["need"] == "next"
 
-    @patch(_OLLAMA_ASYNC_CLIENT)
-    def test_defaults_model_and_think_when_omitted(
+    def test_blank_task_returns_422(
         self,
-        mock_async_client_class: MagicMock,
+        agent_builder: LLMAgentBuilder,
     ) -> None:
-        """Omitting ``model``/``think`` in the request still succeeds."""
-        mock_async_client_class.return_value = MagicMock()
-        client = _client()
-
-        response = client.post("/api/sessions", json={"task": "do a thing"})
-
-        assert response.status_code == status.HTTP_201_CREATED
-
-    @patch(_OLLAMA_ASYNC_CLIENT)
-    def test_ignores_m2_m3_scoped_fields(
-        self,
-        mock_async_client_class: MagicMock,
-    ) -> None:
-        """M2/M3-scoped fields are accepted but not wired up yet.
-
-        ``skills_scopes``/``explicit_only_skills``/``mcp_servers`` and
-        any ``function_tools`` name other than ``next_number`` don't
-        cause a validation error, and don't change what actually gets
-        registered on the agent.
-        """
-        mock_async_client_class.return_value = MagicMock()
-        client = _client()
-
-        response = client.post(
-            "/api/sessions",
-            json={
-                "task": "do a thing",
-                "skills_scopes": ["USER", "PROJECT"],
-                "explicit_only_skills": ["stop-at-one"],
-                "mcp_servers": [
-                    {
-                        "name": "weather-mcp",
-                        "transport": "stdio",
-                        "command": "uvx weather-mcp",
-                    },
-                ],
-                "function_tools": [
-                    {
-                        "name": "totally_different_tool",
-                        "signature": "totally_different_tool() -> int",
-                        "source": "...",
-                    },
-                ],
-            },
-        )
-
-        assert response.status_code == status.HTTP_201_CREATED
-        assert response.json()["tools"] == ["next_number"]
-
-    def test_blank_task_returns_422(self) -> None:
         """An empty ``task`` string fails Pydantic's ``min_length``."""
-        client = _client()
+        client = _client(SessionService(agent_builder=agent_builder))
 
         response = client.post("/api/sessions", json={"task": ""})
 
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
-    def test_missing_task_returns_422(self) -> None:
+    def test_missing_task_returns_422(
+        self,
+        agent_builder: LLMAgentBuilder,
+    ) -> None:
         """A request body without ``task`` is rejected."""
-        client = _client()
+        client = _client(SessionService(agent_builder=agent_builder))
 
         response = client.post("/api/sessions", json={})
 
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
-    def test_wrong_type_returns_422(self) -> None:
-        """A wrongly-typed field (e.g. ``think`` as a string) is rejected."""
-        client = _client()
+    def test_wrong_type_returns_422(
+        self,
+        agent_builder: LLMAgentBuilder,
+    ) -> None:
+        """A wrongly-typed ``task`` field is rejected."""
+        client = _client(SessionService(agent_builder=agent_builder))
+
+        response = client.post("/api/sessions", json={"task": 12345})
+
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+    def test_now_removed_m1_fields_are_ignored_not_errors(
+        self,
+        agent_builder: LLMAgentBuilder,
+    ) -> None:
+        """Extra/legacy fields (model, think, ...) no longer 422 -- they're
+        just ignored, since they're not part of ``CreateSessionRequest``
+        anymore (superseded by the discovered builder per ADR-002).
+        """
+        client = _client(SessionService(agent_builder=agent_builder))
 
         response = client.post(
             "/api/sessions",
-            json={"task": "do a thing", "think": "not-a-bool"},
+            json={
+                "task": "do a thing",
+                "model": "qwen3:14b",
+                "think": False,
+                "function_tools": [{"name": "next_number"}],
+            },
         )
 
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+        assert response.status_code == status.HTTP_201_CREATED
+
+    def test_no_configured_builder_returns_500(self) -> None:
+        """No builder wired up on this process -> 500, not a client error."""
+        client = _client(SessionService())
+
+        response = client.post("/api/sessions", json={"task": "do a thing"})
+
+        assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+
+    def test_builder_build_failure_returns_502(self) -> None:
+        """A failure building the agent from the configured builder -> 502."""
+        broken_builder = AsyncMock(spec=LLMAgentBuilder)
+        broken_builder.build.side_effect = RuntimeError("mcp unreachable")
+        client = _client(SessionService(agent_builder=broken_builder))
+
+        response = client.post("/api/sessions", json={"task": "do a thing"})
+
+        assert response.status_code == status.HTTP_502_BAD_GATEWAY

@@ -163,6 +163,49 @@ class MissingPendingResultError(SessionServiceError):
         )
 
 
+class AgentBuilderNotConfiguredError(SessionServiceError):
+    """Raised when no ``LLMAgentBuilder`` is wired into the SessionService.
+
+    Indicates the process wasn't launched via ``agent-inspector launch
+    <script>`` (which discovers and configures a builder -- see
+    ``discovery.py`` -- before the app starts serving requests). A
+    server misconfiguration, not a client error. Route layer should
+    map this to ``500``.
+    """
+
+    def __init__(self) -> None:
+        """Initialize an AgentBuilderNotConfiguredError."""
+        super().__init__(
+            "No LLMAgentBuilder is configured on this SessionService. "
+            "Launch via `agent-inspector launch <script>` so one is "
+            "discovered and wired up before sessions can be created.",
+        )
+
+
+class AgentBuildError(SessionServiceError):
+    """Raised when the configured ``LLMAgentBuilder`` fails to build.
+
+    Wraps whatever ``LLMAgentBuilder.build()`` raises -- e.g. an
+    ``LLMAgentBuilderError`` (shouldn't happen here in practice, since
+    ``agent-inspector launch`` already validates ``llm`` is set before
+    serving any requests -- see ``discovery.py``) or a transient
+    failure discovering MCP tools. Route layer should map this to
+    ``502``.
+    """
+
+    def __init__(self, cause: Exception) -> None:
+        """Initialize an AgentBuildError.
+
+        Args:
+            cause (Exception): The underlying exception the builder's
+                ``build()`` raised.
+        """
+        self.cause = cause
+        super().__init__(
+            f"Failed to build agent from configured builder: {cause}",
+        )
+
+
 class StepExecutionError(SessionServiceError):
     """Raised when the framework raises while executing a step.
 

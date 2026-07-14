@@ -15,6 +15,12 @@ from typing import Optional
 import typer
 import uvicorn
 
+from agent_inspector.deps import configure_agent_builder
+from agent_inspector.discovery import (
+    AGENT_BUILDER_ATTR,
+    EntrypointDiscoveryError,
+    discover_agent_builder,
+)
 from agent_inspector.server import create_app
 
 app = typer.Typer(
@@ -61,6 +67,19 @@ def _open_browser_later(url: str) -> None:
 
 @app.command()
 def launch(
+    agent_script: Path = typer.Argument(
+        ...,
+        help=(
+            "Path to a Python script that exposes a module-level "
+            f"`{AGENT_BUILDER_ATTR}` -- an `LLMAgentBuilder` instance "
+            "(from llm_agents_from_scratch.agent.builder) with at "
+            "least `.with_llm(...)` already called on it. Agent "
+            "Inspector imports this script once at launch and calls "
+            f"`{AGENT_BUILDER_ATTR}.build()` once per new session to "
+            "obtain a fresh, independent LLMAgent. See ADR-002 and "
+            "docs/overview.md for the full convention."
+        ),
+    ),
     port: int = typer.Option(
         DEFAULT_PORT,
         "--port",
@@ -93,7 +112,14 @@ def launch(
 ) -> None:
     """Boot the Agent Inspector backend and (by default) its UI.
 
+    Discovers an ``LLMAgentBuilder`` from ``agent_script`` (see
+    ``discovery.py`` / ADR-002) before starting the server, so a
+    broken or misconfigured script fails loudly and immediately here
+    rather than lazily on the first ``POST /sessions``.
+
     Args:
+        agent_script (Path): Path to the user's entrypoint script
+            exposing an ``LLMAgentBuilder`` at module scope.
         port (int): Port to serve the backend API on. Defaults to
             8000.
         no_open (bool): Skip opening a browser tab automatically.
@@ -104,6 +130,14 @@ def launch(
             instead of serving the bundled ``web/`` assets. Defaults
             to False.
     """
+    try:
+        agent_builder = discover_agent_builder(agent_script)
+    except EntrypointDiscoveryError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1) from e
+
+    configure_agent_builder(agent_builder)
+
     serve_static = not backend_only and not dev
     fastapi_app = create_app(serve_static=serve_static)
 
