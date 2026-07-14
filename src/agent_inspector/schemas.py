@@ -86,3 +86,17 @@ class RunStepResponse(BaseModel):
     tool_calls: list[ToolCallTraceOut]
     step_counter: int
     need: Need
+
+
+class EditResultRequest(BaseModel):
+    """Request body for ``PATCH /api/sessions/{id}/result`` (see #14)."""
+
+    content: str
+
+
+class EditResultResponse(BaseModel):
+    """Response body for ``PATCH /api/sessions/{id}/result`` (see #14)."""
+
+    result: TaskStepResultOut
+    edited: bool = True
+    need: Need

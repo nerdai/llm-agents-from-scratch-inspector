@@ -13,6 +13,8 @@ from fastapi import APIRouter, HTTPException, status
 from agent_inspector.deps import SessionServiceDep
 from agent_inspector.errors import (
     MissingPendingResultError,
+    MissingRolloutSpanError,
+    NoEditableResultError,
     NoPendingStepError,
     SessionBusyError,
     SessionConfigError,
@@ -23,6 +25,8 @@ from agent_inspector.errors import (
 from agent_inspector.schemas import (
     CreateSessionRequest,
     CreateSessionResponse,
+    EditResultRequest,
+    EditResultResponse,
     RunStepResponse,
     TaskOut,
     TaskStepResultOut,
@@ -235,3 +239,53 @@ async def complete_session(
         "result": {"task_id": result.task_id, "content": result.content},
         "need": need,
     }
+
+
+@router.patch("/sessions/{session_id}/result")
+async def patch_result(
+    session_id: str,
+    request: EditResultRequest,
+    session_service: SessionServiceDep,
+) -> EditResultResponse:
+    """Edit the last ``TaskStepResult``'s content (TRD §6.11, see #14).
+
+    Rewrites ``session.last_step_result.content`` and the
+    corresponding span of ``session.handler.rollout`` that ``run-step``
+    (#5) recorded for it, so the two stay consistent. Requires
+    ``need == "next"``.
+
+    Args:
+        session_id (str): The session identifier.
+        request (EditResultRequest): The edited content.
+        session_service (SessionServiceDep): Injected session service.
+
+    Returns:
+        EditResultResponse: The edited result, ``edited: true``, and
+            the session's (unchanged) ``need`` (``"next"``).
+
+    Raises:
+        HTTPException: ``404`` if the session doesn't exist, ``409``
+            if the session is busy, isn't waiting on ``need == "next"``,
+            or has no editable ``TaskStepResult`` right now (a fresh
+            session, or one that just came out of a rejection), ``500``
+            on a server invariant violation (an editable result with
+            no recorded rollout span).
+    """
+    try:
+        with session_service.lock_session(session_id) as session:
+            result = session_service.edit_result(session, request.content)
+            need = session.need
+    except SessionNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except (SessionBusyError, WrongNeedError, NoEditableResultError) as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    except MissingRolloutSpanError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    return EditResultResponse(
+        result=TaskStepResultOut(
+            task_step_id=result.task_step_id,
+            content=result.content,
+        ),
+        need=need,
+    )
