@@ -5,6 +5,7 @@ format:	## Run code autoformatters (ruff, eslint --fix, prettier --write).
 	pre-commit install
 	git ls-files | xargs pre-commit run ruff-format --files
 	git ls-files | xargs pre-commit run eslint --files
+	cd frontend && npm run format
 
 lint:	## Run all linters (backend + frontend) via pre-commit.
 	pre-commit install && git ls-files | xargs pre-commit run --show-diff-on-failure --files
