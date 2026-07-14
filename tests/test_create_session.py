@@ -36,7 +36,7 @@ from llm_agents_from_scratch.data_structures import (
 )
 
 from agent_inspector.deps import get_session_service
-from agent_inspector.errors import (
+from agent_inspector.errors.session import (
     AgentBuilderNotConfiguredError,
     AgentBuildError,
     SessionConfigError,

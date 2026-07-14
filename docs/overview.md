@@ -12,17 +12,19 @@ that the whole API is built around — the thing to read before touching
 routes/    -- thin FastAPI routes: parse request, call a service,
               map domain exceptions to HTTPException, return.
 services/  -- all business logic. No FastAPI/Starlette imports.
-              Raises plain exceptions (errors.py), never HTTPException.
-errors.py  -- domain exceptions shared across services/, deliberately
-              with no dependency on services/ (see its module docstring).
+              Raises plain exceptions (errors/), never HTTPException.
+errors/    -- domain exceptions, one module per domain concern,
+              deliberately with no dependency on the module they
+              serve (see its package docstring).
 deps.py    -- FastAPI DI wiring: Annotated[..., Depends(...)] aliases,
               and the process-wide service singletons.
 ```
 
-One module per domain concern in both `services/` and `routes/` (e.g.
-`services/session.py` pairs with `routes/session.py`). Neither package
-re-exports from its `__init__.py` — always import from the specific
-submodule, so it's unambiguous where something lives.
+One module per domain concern in `services/`, `routes/`, and `errors/`
+(e.g. `services/session.py` pairs with `routes/session.py` and
+`errors/session.py`). None of these packages re-export from their
+`__init__.py` — always import from the specific submodule, so it's
+unambiguous where something lives.
 
 ## Session lifecycle
 

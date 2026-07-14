@@ -1,4 +1,4 @@
-"""Domain exceptions raised by ``services/``.
+"""Domain exceptions raised by ``services/session.py``.
 
 Framework-agnostic by design: nothing in ``services/`` may import
 FastAPI, so these are plain ``Exception`` subclasses. It's the route

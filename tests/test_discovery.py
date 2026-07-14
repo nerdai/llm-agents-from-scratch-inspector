@@ -13,7 +13,8 @@ from pathlib import Path
 import pytest
 from llm_agents_from_scratch import LLMAgentBuilder
 
-from agent_inspector.discovery import (
+from agent_inspector.discovery import discover_agent_builder
+from agent_inspector.errors.discovery import (
     AGENT_BUILDER_ATTR,
     AgentBuilderNotReadyError,
     EntrypointDiscoveryError,
@@ -21,7 +22,6 @@ from agent_inspector.discovery import (
     MissingAgentBuilderError,
     ScriptImportError,
     ScriptNotFoundError,
-    discover_agent_builder,
 )
 
 _VALID_SCRIPT = """

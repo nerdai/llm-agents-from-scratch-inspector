@@ -15,7 +15,7 @@ from llm_agents_from_scratch import LLMAgentBuilder
 from typer.testing import CliRunner
 
 from agent_inspector import cli, deps
-from agent_inspector.discovery import AGENT_BUILDER_ATTR
+from agent_inspector.errors.discovery import AGENT_BUILDER_ATTR
 
 runner = CliRunner()
 

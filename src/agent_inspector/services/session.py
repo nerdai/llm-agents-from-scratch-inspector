@@ -31,7 +31,7 @@ from llm_agents_from_scratch.data_structures import (
     ToolCallResult,
 )
 
-from agent_inspector.errors import (
+from agent_inspector.errors.session import (
     AgentBuilderNotConfiguredError,
     AgentBuildError,
     InvalidNeedTransitionError,

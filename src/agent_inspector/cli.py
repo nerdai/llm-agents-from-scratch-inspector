@@ -16,10 +16,10 @@ import typer
 import uvicorn
 
 from agent_inspector.deps import configure_agent_builder
-from agent_inspector.discovery import (
+from agent_inspector.discovery import discover_agent_builder
+from agent_inspector.errors.discovery import (
     AGENT_BUILDER_ATTR,
     EntrypointDiscoveryError,
-    discover_agent_builder,
 )
 from agent_inspector.server import create_app
 
