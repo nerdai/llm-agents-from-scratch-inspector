@@ -11,6 +11,7 @@ from typing import Any, Literal, TypeAlias
 from llm_agents_from_scratch.data_structures import (
     RejectedTaskResult,
     Task,
+    TaskStep,
     TaskStepResult,
 )
 from pydantic import BaseModel, Field
@@ -76,6 +77,25 @@ class RunStepResponse(BaseModel):
     result: TaskStepResultOut
     tool_calls: list[ToolCallTraceOut]
     step_counter: int
+    need: Need
+
+
+TaskStepOut: TypeAlias = TaskStep
+"""Wire representation of the framework's ``TaskStep`` -- a plain alias,
+same rationale as ``TaskOut`` above."""
+
+
+class EditStepRequest(BaseModel):
+    """Request body for ``PATCH /api/sessions/{id}/step`` (see #13)."""
+
+    instruction: str = Field(min_length=1)
+
+
+class EditStepResponse(BaseModel):
+    """Response body for ``PATCH /api/sessions/{id}/step`` (see #13)."""
+
+    step: TaskStepOut
+    edited: bool = True
     need: Need
 
 

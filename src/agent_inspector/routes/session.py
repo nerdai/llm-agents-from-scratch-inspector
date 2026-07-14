@@ -26,6 +26,8 @@ from agent_inspector.schemas import (
     AbortSessionResponse,
     CreateSessionRequest,
     CreateSessionResponse,
+    EditStepRequest,
+    EditStepResponse,
     RejectedTaskResultOut,
     RejectRequest,
     RejectResponse,
@@ -203,6 +205,48 @@ async def post_run_step(
         step_counter=outcome.step_counter,
         need=outcome.need,
     )
+
+
+@router.patch("/sessions/{session_id}/step")
+async def patch_step(
+    session_id: str,
+    request: EditStepRequest,
+    session_service: SessionServiceDep,
+) -> EditStepResponse:
+    """Edit the session's pending ``TaskStep`` (TRD §6.10, see #13).
+
+    Mutates the pending step's instruction in place without consuming
+    it or advancing ``need``. Requires ``need == "run"`` -- i.e. must
+    be called strictly before ``run-step`` (#5) consumes the step, so
+    the edit is guaranteed to be what ``run-step`` actually executes.
+
+    Args:
+        session_id (str): The session identifier.
+        request (EditStepRequest): The new instruction text.
+        session_service (SessionServiceDep): Injected session service.
+
+    Returns:
+        EditStepResponse: The mutated step, ``edited: true``, and the
+            (unchanged) ``need`` (``"run"``).
+
+    Raises:
+        HTTPException: ``404`` if the session doesn't exist, ``409``
+            if the session is busy or not waiting on ``need == "run"``,
+            ``500`` on a server invariant violation (``need == "run"``
+            with no pending step recorded).
+    """
+    try:
+        with session_service.lock_session(session_id) as session:
+            step = session_service.edit_step(session, request.instruction)
+            need = session.need
+    except SessionNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except (SessionBusyError, WrongNeedError) as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    except NoPendingStepError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    return EditStepResponse(step=step, edited=True, need=need)
 
 
 @router.post("/sessions/{session_id}/complete")

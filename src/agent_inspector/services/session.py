@@ -624,6 +624,48 @@ class SessionService:
                 need=session.need,
             )
 
+    def edit_step(self, session: Session, instruction: str) -> TaskStep:
+        """Edit the instruction of a session's pending ``TaskStep`` (#13).
+
+        Mutates ``session.pending_step.instruction`` in place; does not
+        consume the step, transition ``need``, or touch
+        ``pending_result``/``last_step_result``. Since ``run_step``
+        (#5) reads ``step.instruction`` fresh when it eventually
+        executes the step (no earlier snapshot is taken by the
+        framework), this edit is correctly picked up as long as it
+        happens strictly before that call. ``require_need`` below only
+        checks ``need == "run"`` at the moment this method runs -- it's
+        holding the session's lock via ``lock_session()`` (see the
+        ``session`` arg below) that actually prevents a *concurrent*
+        ``run_step`` call from consuming the step while this edit is in
+        flight; the two guarantees together are what make "strictly
+        before" hold.
+
+        Args:
+            session (Session): The session to edit. Callers must
+                obtain this via ``lock_session()`` so the mutation is
+                serialized against other calls on the same session --
+                see the docstring note above on why that's required,
+                not just recommended, for this method's correctness.
+            instruction (str): The new instruction text.
+
+        Returns:
+            TaskStep: The mutated pending step.
+
+        Raises:
+            WrongNeedError: If ``session.need != "run"``.
+            NoPendingStepError: If ``need == "run"`` but no
+                ``pending_step`` is recorded (server invariant bug;
+                see ``run_step``).
+        """
+        self.require_need(session, "run")
+        step = session.pending_step
+        if step is None:
+            raise NoPendingStepError(session.id)
+
+        step.instruction = instruction
+        return step
+
     async def run_step(self, session: Session) -> RunStepOutcome:
         """Execute a session's pending ``TaskStep`` (see #5).
 
