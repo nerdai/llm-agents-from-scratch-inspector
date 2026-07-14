@@ -1,22 +1,22 @@
-import type { Need } from "../api/types";
+import type { Need } from '../api/types'
 
 interface ControlsProps {
-  need: Need | null;
-  loading: boolean;
-  onGetNextStep: () => void;
-  onRunStep: () => void;
+  need: Need | null
+  loading: boolean
+  onGetNextStep: () => void
+  onRunStep: () => void
 }
 
 const PHASE_LABEL: Record<Need, string> = {
-  next: "Awaiting get_next_step()",
-  run: "Awaiting run_step(step)",
-  approve: "Awaiting approval — complete the task",
-  done: "Task complete",
-};
+  next: 'Awaiting get_next_step()',
+  run: 'Awaiting run_step(step)',
+  approve: 'Awaiting approval — complete the task',
+  done: 'Task complete',
+}
 
 function Controls({ need, loading, onGetNextStep, onRunStep }: ControlsProps) {
-  const canNext = need === "next" && !loading;
-  const canRun = need === "run" && !loading;
+  const canNext = need === 'next' && !loading
+  const canRun = need === 'run' && !loading
 
   return (
     <div className="controls">
@@ -38,11 +38,11 @@ function Controls({ need, loading, onGetNextStep, onRunStep }: ControlsProps) {
           run_step(step)
         </button>
       </div>
-      <span className={`phase-pill phase-${need ?? "next"}`}>
-        {loading ? "Calling backend…" : (need ? PHASE_LABEL[need] : "")}
+      <span className={`phase-pill phase-${need ?? 'next'}`}>
+        {loading ? 'Calling backend…' : need ? PHASE_LABEL[need] : ''}
       </span>
     </div>
-  );
+  )
 }
 
-export default Controls;
+export default Controls

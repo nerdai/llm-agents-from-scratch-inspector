@@ -1,9 +1,9 @@
-import "./App.css";
-import TaskForm from "./components/TaskForm";
-import Controls from "./components/Controls";
-import Timeline from "./components/Timeline";
-import ErrorBanner from "./components/ErrorBanner";
-import { useSession } from "./session/useSession";
+import './App.css'
+import TaskForm from './components/TaskForm'
+import Controls from './components/Controls'
+import Timeline from './components/Timeline'
+import ErrorBanner from './components/ErrorBanner'
+import { useSession } from './session/useSession'
 
 /**
  * Agent Inspector -- minimal M1 client.
@@ -15,10 +15,10 @@ import { useSession } from "./session/useSession";
  */
 function App() {
   const { state, start, getNextStep, runNextStep, approve, reset } =
-    useSession();
+    useSession()
 
-  const hasSession = state.sessionId !== null;
-  const isDone = state.completedResult !== null;
+  const hasSession = state.sessionId !== null
+  const isDone = state.completedResult !== null
 
   return (
     <div id="inspector">
@@ -46,10 +46,14 @@ function App() {
             </div>
             <div>
               <span className="kv-label">tools</span>
-              <code>{state.tools.join(", ") || "(none)"}</code>
+              <code>{state.tools.join(', ') || '(none)'}</code>
             </div>
             {isDone && (
-              <button type="button" className="btn btn-secondary" onClick={reset}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={reset}
+              >
                 Start new session
               </button>
             )}
@@ -73,7 +77,7 @@ function App() {
         </section>
       )}
     </div>
-  );
+  )
 }
 
-export default App;
+export default App

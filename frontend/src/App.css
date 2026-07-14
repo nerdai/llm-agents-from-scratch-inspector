@@ -77,7 +77,7 @@
 }
 
 textarea,
-input[type="text"] {
+input[type='text'] {
   font: inherit;
   font-family: var(--mono);
   font-size: 14px;
