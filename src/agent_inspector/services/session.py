@@ -634,6 +634,42 @@ class SessionService:
                 need=session.need,
             )
 
+    def edit_step(self, session: Session, instruction: str) -> TaskStep:
+        """Edit the instruction of a session's pending ``TaskStep`` (#13).
+
+        Mutates ``session.pending_step.instruction`` in place; does not
+        consume the step, transition ``need``, or touch
+        ``pending_result``/``last_step_result``. Since ``run_step``
+        (#5) reads ``step.instruction`` fresh when it eventually
+        executes the step (no earlier snapshot is taken by the
+        framework), this edit is correctly picked up as long as it
+        happens strictly before that call -- which ``require_need``
+        below guarantees, since ``run_step`` requires (and consumes)
+        ``need == "run"``.
+
+        Args:
+            session (Session): The session to edit. Callers should
+                obtain this via ``lock_session()`` so the mutation is
+                serialized against other calls on the same session.
+            instruction (str): The new instruction text.
+
+        Returns:
+            TaskStep: The mutated pending step.
+
+        Raises:
+            WrongNeedError: If ``session.need != "run"``.
+            NoPendingStepError: If ``need == "run"`` but no
+                ``pending_step`` is recorded (server invariant bug;
+                see ``run_step``).
+        """
+        self.require_need(session, "run")
+        step = session.pending_step
+        if step is None:
+            raise NoPendingStepError(session.id)
+
+        step.instruction = instruction
+        return step
+
     async def run_step(self, session: Session) -> RunStepOutcome:
         """Execute a session's pending ``TaskStep`` (see #5).
 
