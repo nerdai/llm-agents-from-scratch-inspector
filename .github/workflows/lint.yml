@@ -1,0 +1,63 @@
+name: Linting
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types:
+      - opened
+      - synchronize
+jobs:
+  lint-backend:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: get code
+        uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          # Install a specific version of uv.
+          version: "0.5.21"
+          enable-cache: true
+
+      - name: "Set up Python"
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install the project
+        run: uv sync --all-extras --dev
+
+      - name: Run linter and formatter
+        run: |
+          uv run make lint-backend
+
+  lint-frontend:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: get code
+        uses: actions/checkout@v7
+
+      - name: "Set up Node"
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
