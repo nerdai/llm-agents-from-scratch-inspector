@@ -35,6 +35,7 @@ from llm_agents_from_scratch.data_structures import (
     ToolCall,
     ToolCallResult,
 )
+from llm_agents_from_scratch.data_structures.skill import SkillScope
 
 from agent_inspector.errors.session import (
     AgentBuilderNotConfiguredError,
@@ -520,7 +521,13 @@ class SessionService:
             self._sessions[session_id] = session
         return session
 
-    async def create_session_from_config(self, *, task: str) -> Session:
+    async def create_session_from_config(
+        self,
+        *,
+        task: str,
+        skills_scopes: list[SkillScope] | None = None,
+        explicit_only_skills: set[str] | None = None,
+    ) -> Session:
         """Build an ``LLMAgent``, start a supervised run, register it.
 
         Implements TRD §6.1 (issue #3), reworked per ADR-002 (#47):
@@ -529,18 +536,32 @@ class SessionService:
         that ``agent-inspector launch <script>`` discovered from the
         user's own script (see ``discovery.py``) -- to obtain a fresh,
         independent ``LLMAgent`` for this session, then calls
-        ``run_supervised(task)`` to obtain the ``SupervisedTaskHandler``
-        and hands the resulting agent/handler pair to
-        ``create_session()``.
+        ``run_supervised(task, skills_scopes, explicit_only_skills)``
+        to obtain the ``SupervisedTaskHandler`` and hands the resulting
+        agent/handler pair to ``create_session()``.
 
-        Every model/tools/skills/memory choice now lives in the
-        discovered builder rather than the request body; ``task`` is
-        the only thing that still varies per session (see ADR-002's
-        rationale for why that's inherent to "drive one task at a
-        time").
+        Model/tools/memories now live in the discovered builder rather
+        than the request body. ``task`` and, per #9,
+        ``skills_scopes``/``explicit_only_skills`` are the exceptions:
+        the former is inherent to "drive one task at a time" (see
+        ADR-002's rationale), and the latter two are call-time
+        arguments to the framework's own ``run_supervised()`` rather
+        than ``LLMAgentBuilder`` construction config, so there's no
+        builder-side default for a script to fix them through.
 
         Args:
             task (str): The task instruction.
+            skills_scopes (list[SkillScope] | None): Scopes to scan
+                for skills, forwarded verbatim to
+                ``LLMAgent.run_supervised()``. Defaults to ``None``,
+                which the framework itself defaults to scanning both
+                ``SkillScope.USER`` and ``SkillScope.PROJECT``.
+            explicit_only_skills (set[str] | None): Skill names to
+                hide from the model's visible skill catalog (the
+                framework's ``UseSkillTool._visible``) without
+                removing the ability to invoke them directly by name.
+                Forwarded verbatim to ``run_supervised()``. Defaults
+                to ``None`` (no skills hidden).
 
         Returns:
             Session: The newly created, stored session, at
@@ -570,7 +591,11 @@ class SessionService:
         except Exception as e:
             raise AgentBuildError(e) from e
 
-        handler = await agent.run_supervised(Task(instruction=task))
+        handler = await agent.run_supervised(
+            Task(instruction=task),
+            skills_scopes=skills_scopes,
+            explicit_only_skills=explicit_only_skills,
+        )
         return self.create_session(agent, handler)
 
     def get_session(self, session_id: str) -> Session:
