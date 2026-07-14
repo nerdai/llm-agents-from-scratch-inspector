@@ -6,8 +6,9 @@ wire-format definitions. Framework-agnostic aside from ``pydantic``
 itself -- no FastAPI imports here.
 """
 
-from typing import Any
+from typing import Any, TypeAlias
 
+from llm_agents_from_scratch.data_structures import Task, TaskStepResult
 from pydantic import BaseModel, Field
 
 from agent_inspector.services.session import Need
@@ -44,11 +45,14 @@ class CreateSessionRequest(BaseModel):
     mcp_servers: list[dict[str, Any]] | None = None
 
 
-class TaskOut(BaseModel):
-    """The ``task`` portion of a ``CreateSessionResponse``."""
+TaskOut: TypeAlias = Task
+"""The ``task`` portion of a ``CreateSessionResponse``.
 
-    id_: str
-    instruction: str
+A companion dev tool for ``llm-agents-from-scratch`` is expected to
+couple directly to its data structures rather than shadow them --
+``Task`` already has exactly this shape (``id_``, ``instruction``), so
+this is a plain alias, not a copy that could drift from the real type.
+"""
 
 
 class CreateSessionResponse(BaseModel):
@@ -61,11 +65,9 @@ class CreateSessionResponse(BaseModel):
     need: str
 
 
-class TaskStepResultOut(BaseModel):
-    """Wire representation of the framework's ``TaskStepResult``."""
-
-    task_step_id: str
-    content: str
+TaskStepResultOut: TypeAlias = TaskStepResult
+"""Wire representation of the framework's ``TaskStepResult`` -- a plain
+alias, same rationale as ``TaskOut`` above."""
 
 
 class ToolCallTraceOut(BaseModel):
