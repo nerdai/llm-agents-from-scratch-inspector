@@ -9,7 +9,6 @@ here -- see ``services/session.py``.
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
-from llm_agents_from_scratch.data_structures.skill import SkillScope
 
 from agent_inspector.deps import SessionServiceDep
 from agent_inspector.errors.session import (
@@ -76,19 +75,11 @@ async def create_session(
             if no builder was discovered/configured for this process,
             ``502`` if the configured builder fails to build an agent.
     """
-    explicit_only_skills = (
-        set(request.explicit_only_skills)
-        if request.explicit_only_skills is not None
-        else None
-    )
+    explicit_only_skills = request.explicit_only_skills
     try:
         session = await session_service.create_session_from_config(
             task=request.task,
-            skills_scopes=(
-                [SkillScope(scope) for scope in request.skills_scopes]
-                if request.skills_scopes is not None
-                else None
-            ),
+            skills_scopes=request.skills_scopes,
             explicit_only_skills=explicit_only_skills,
         )
     except SessionConfigError as e:

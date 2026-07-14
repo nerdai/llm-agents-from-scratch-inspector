@@ -422,9 +422,14 @@ class TestCreateSessionFromConfigSkills:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """``explicit_only_skills`` is forwarded to ``run_supervised()``:
-        the skill stays discovered (loadable) but is hidden from the
-        model's visible catalog (the framework's own
-        ``UseSkillTool._visible``)."""
+        the skill stays discovered (loadable) rather than being dropped
+        from ``handler.skills`` outright. The catalog-visibility effect
+        of ``explicit_only_skills`` (the framework's own
+        ``UseSkillTool._visible``) is an internal implementation detail,
+        so it's covered at the route layer instead, via the observable
+        ``explicit_only: true`` tag -- see
+        ``TestCreateSessionRouteSkills.
+        test_explicit_only_skills_are_tagged_but_still_listed``."""
         _write_skill(tmp_path, "greeter")
         monkeypatch.chdir(tmp_path)
         service = SessionService(agent_builder=agent_builder)
@@ -436,8 +441,6 @@ class TestCreateSessionFromConfigSkills:
         )
 
         assert "greeter" in session.handler.skills
-        assert session.handler._explicit_only_skills == {"greeter"}
-        assert "greeter" not in session.handler._use_skill_tool._visible
 
     async def test_omitting_skills_fields_still_works(
         self,

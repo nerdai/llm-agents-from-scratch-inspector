@@ -41,8 +41,8 @@ class CreateSessionRequest(BaseModel):
     """
 
     task: str = Field(min_length=1)
-    skills_scopes: list[Literal["user", "project"]] | None = None
-    explicit_only_skills: list[str] | None = None
+    skills_scopes: list[SkillScope] | None = None
+    explicit_only_skills: set[str] | None = None
 
 
 TaskOut: TypeAlias = Task
