@@ -178,6 +178,71 @@ class TestDiscoverAgentBuilderSuccess:
 
         assert builder_one is not builder_two
 
+    def test_same_filename_in_different_directories_does_not_collide(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Two scripts sharing a filename in different dirs don't collide.
+
+        Regression test: the synthetic sys.modules name used to be
+        derived from the script's stem alone, so `dir_a/main.py` and
+        `dir_b/main.py` could clobber each other.
+        """
+        dir_a = tmp_path / "dir_a"
+        dir_b = tmp_path / "dir_b"
+        dir_a.mkdir()
+        dir_b.mkdir()
+        first = _write(dir_a, "main.py", _VALID_SCRIPT)
+        second = _write(dir_b, "main.py", _VALID_SCRIPT)
+
+        builder_one = discover_agent_builder(first)
+        builder_two = discover_agent_builder(second)
+
+        assert builder_one is not builder_two
+
+    def test_sibling_module_import_resolves(self, tmp_path: Path) -> None:
+        """A script that imports a sibling module in its own directory works.
+
+        Regression test: the script's own directory wasn't being added
+        to sys.path, so `import utils` (a module alongside the script,
+        not on sys.path otherwise) would fail unless the CLI happened
+        to be invoked from that same directory.
+        """
+        _write(tmp_path, "helper_module.py", "GREETING = 'hi from helper'\n")
+        script = _write(
+            tmp_path,
+            "uses_sibling.py",
+            "from llm_agents_from_scratch import LLMAgentBuilder\n"
+            "from llm_agents_from_scratch.base.llm import BaseLLM\n"
+            "import helper_module\n"
+            "\n"
+            "\n"
+            "class _FakeLLM(BaseLLM):\n"
+            "    async def complete(self, prompt, **kwargs):\n"
+            "        raise NotImplementedError\n"
+            "\n"
+            "    async def structured_output(self, prompt, mdl, **kwargs):\n"
+            "        raise NotImplementedError\n"
+            "\n"
+            "    async def chat(self, input, chat_history=None, tools=None, "
+            "**kwargs):\n"
+            "        raise NotImplementedError\n"
+            "\n"
+            "    async def continue_chat_with_tool_results(\n"
+            "        self, tool_call_results, chat_history, tools=None, "
+            "**kwargs,\n"
+            "    ):\n"
+            "        raise NotImplementedError\n"
+            "\n"
+            "\n"
+            "assert helper_module.GREETING == 'hi from helper'\n"
+            f"{AGENT_BUILDER_ATTR} = LLMAgentBuilder().with_llm(_FakeLLM())\n",
+        )
+
+        builder = discover_agent_builder(script)
+
+        assert isinstance(builder, LLMAgentBuilder)
+
 
 def test_all_discovery_errors_are_entrypoint_discovery_errors() -> None:
     """Every specific failure subclasses the one type ``cli.py`` catches."""

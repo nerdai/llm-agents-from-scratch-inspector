@@ -46,9 +46,9 @@ async def create_session(
     """Create a new supervised-run session (TRD §6.1).
 
     Calls ``.build()`` on the ``LLMAgentBuilder`` discovered from the
-    user's own script at CLI launch time (see ADR-002 / ``discovery
-    .py``) to obtain a fresh ``LLMAgent``, starts a ``run_supervised()``
-    handler for it, then registers the session.
+    user's own script at CLI launch time (see ADR-002 /
+    ``discovery.py``) to obtain a fresh ``LLMAgent``, starts a
+    ``run_supervised()`` handler for it, then registers the session.
 
     Args:
         request (CreateSessionRequest): The session config to create.

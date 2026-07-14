@@ -11,6 +11,7 @@ machine the rest of the way; ``reject``/``abort`` are wired up by
 later issues (#11-#14).
 """
 
+import asyncio
 import secrets
 import threading
 from collections.abc import Iterator
@@ -446,6 +447,11 @@ class SessionService:
 
         try:
             agent = await self.agent_builder.build()
+        except asyncio.CancelledError:
+            # Let cancellation (client disconnect, timeout) propagate
+            # instead of being wrapped as a 502 -- this isn't a genuine
+            # build failure.
+            raise
         except Exception as e:
             raise AgentBuildError(e) from e
 

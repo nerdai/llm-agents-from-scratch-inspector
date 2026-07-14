@@ -25,6 +25,7 @@ standard in ``docs/overview.md``).
 
 import importlib.util
 import sys
+import uuid
 from pathlib import Path
 
 from llm_agents_from_scratch import LLMAgentBuilder
@@ -67,13 +68,30 @@ def discover_agent_builder(script_path: Path) -> LLMAgentBuilder:
     if not script_path.is_file():
         raise ScriptNotFoundError(script_path)
 
-    module_name = f"_agent_inspector_entrypoint_{script_path.stem}"
-    spec = importlib.util.spec_from_file_location(module_name, script_path)
+    resolved_path = script_path.resolve()
+
+    # A unique suffix (not just the stem) keeps two different scripts
+    # that happen to share a filename in different directories from
+    # colliding in sys.modules.
+    unique_suffix = uuid.uuid4().hex
+    module_name = f"_ai_entrypoint_{script_path.stem}_{unique_suffix}"
+    spec = importlib.util.spec_from_file_location(module_name, resolved_path)
     if spec is None or spec.loader is None:
         raise ScriptImportError(
             script_path,
             ImportError(f"could not build an import spec for {script_path}"),
         )
+
+    # Mirrors `python /path/to/main.py`: the script's own directory
+    # goes on sys.path so sibling imports (`import utils`) resolve
+    # the same way they would running it directly, regardless of the
+    # cwd `agent-inspector launch` was invoked from. Left in place
+    # (not popped after import) since the script's tool functions may
+    # do their own lazy/deferred imports of sibling modules later, for
+    # the lifetime of the process.
+    script_dir = str(resolved_path.parent)
+    if script_dir not in sys.path:
+        sys.path.insert(0, script_dir)
 
     module = importlib.util.module_from_spec(spec)
     # Registering the module under sys.modules before exec_module
