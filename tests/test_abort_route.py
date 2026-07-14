@@ -22,6 +22,7 @@ from llm_agents_from_scratch.data_structures import (
     TaskStep,
     TaskStepResult,
 )
+from llm_agents_from_scratch.memory.memory import Memory
 
 from agent_inspector.deps import get_session_service
 from agent_inspector.server import create_app
@@ -42,18 +43,24 @@ def client(session_service: SessionService) -> TestClient:
     return TestClient(app)
 
 
-async def _new_session(session_service: SessionService) -> Session:
+async def _new_session(
+    session_service: SessionService,
+    *,
+    memories: list[Memory] | None = None,
+) -> Session:
     """Build a session parked at ``need == "next"`` (freshly created).
 
     Args:
         session_service (SessionService): The service to register the
             session on.
+        memories (list[Memory] | None): Memories to attach to the
+            agent, if any.
 
     Returns:
         Session: The newly created, stored session.
     """
     llm = AsyncMock()
-    agent = LLMAgent(llm=llm)
+    agent = LLMAgent(llm=llm, memories=memories or [])
     task = Task(instruction="do something")
     handler = await agent.run_supervised(task)
     return session_service.create_session(agent=agent, handler=handler)
@@ -165,6 +172,25 @@ class TestPostAbort:
 
         assert session.handler.done()
         assert session.handler.exception() is not None
+
+    async def test_abort_records_memory(
+        self,
+        client: TestClient,
+        session_service: SessionService,
+    ) -> None:
+        """handler.abort() writes an episode to configured memories.
+
+        Guards the ``await session.handler.abort()`` call in
+        ``SessionService.abort`` -- mirrors
+        ``test_complete_route.py::test_complete_records_memory``.
+        """
+        mock_memory = AsyncMock(spec=Memory)
+        mock_memory.recall.return_value = ""
+        session = await _new_session(session_service, memories=[mock_memory])
+
+        client.post(f"/api/sessions/{session.id}/abort")
+
+        mock_memory.record.assert_awaited_once()
 
     async def test_abort_from_run_clears_pending_step(
         self,
