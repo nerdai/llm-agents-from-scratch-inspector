@@ -163,6 +163,54 @@ class MissingPendingResultError(SessionServiceError):
         )
 
 
+class NoEditableResultError(SessionServiceError):
+    """Raised when ``edit_result`` is called with nothing editable.
+
+    ``need == "next"`` (checked separately via ``require_need``) is
+    necessary but not sufficient for editing: it's also the ``need``
+    right after session creation (before any ``run_step``) and right
+    after a rejection (see ``reject``, #11), and in neither case does
+    ``session.last_step_result`` hold a ``TaskStepResult`` with a
+    corresponding ``rollout`` span to splice into. Route layer should
+    map this to ``409`` -- it's a legitimate, client-reachable session
+    state, not a server bug.
+    """
+
+    def __init__(self, session_id: str) -> None:
+        """Initialize a NoEditableResultError.
+
+        Args:
+            session_id (str): The affected session's identifier.
+        """
+        self.session_id = session_id
+        super().__init__(
+            f"Session {session_id!r} has no TaskStepResult available to "
+            "edit right now.",
+        )
+
+
+class MissingRolloutSpanError(SessionServiceError):
+    """Raised when a ``TaskStepResult`` is editable but has no rollout span.
+
+    ``run_step`` (#5) always records ``last_rollout_span`` alongside
+    ``last_step_result`` when it stores a ``TaskStepResult``, so this
+    indicates a server-side invariant violation, not a client error.
+    Route layer should map this to ``500``.
+    """
+
+    def __init__(self, session_id: str) -> None:
+        """Initialize a MissingRolloutSpanError.
+
+        Args:
+            session_id (str): The affected session's identifier.
+        """
+        self.session_id = session_id
+        super().__init__(
+            f"Session {session_id!r} has an editable TaskStepResult but "
+            "no last_rollout_span is recorded.",
+        )
+
+
 class AgentBuilderNotConfiguredError(SessionServiceError):
     """Raised when no ``LLMAgentBuilder`` is wired into the SessionService.
 

@@ -37,6 +37,8 @@ from agent_inspector.errors.session import (
     AgentBuildError,
     InvalidNeedTransitionError,
     MissingPendingResultError,
+    MissingRolloutSpanError,
+    NoEditableResultError,
     NoPendingStepError,
     SessionBusyError,
     SessionConfigError,
@@ -284,6 +286,26 @@ class Session:
             case -- no separate first-call bookkeeping is needed. Set
             by ``run_step`` (#5) and (later) ``reject`` (#11); read
             (never mutated) by ``get_next_step`` (#4).
+        last_rollout_span (tuple[int, int] | None): The
+            ``(start, end)`` character offsets into
+            ``handler.rollout`` covering exactly the text the
+            framework's own ``handler.run_step()`` call appended for
+            ``last_step_result`` (see #14). The framework's
+            ``rollout`` is a plain, unstructured ``str`` -- each
+            ``run_step()`` call appends this turn's formatted text
+            (with a blank-line separator) onto it internally, with no
+            retained pointer back to the ``TaskStepResult`` that
+            produced it -- so this is
+            our own bookkeeping, recorded by ``run_step`` (#5) as
+            ``(len(rollout) before the call, len(rollout) after)``.
+            ``edit_result`` (#14) uses it to splice an edit into
+            ``rollout`` at the exact right place rather than
+            string-searching for previously-appended text (fragile if
+            step content repeats). ``None`` until the first
+            ``run_step()`` completes; only ever set alongside
+            ``last_step_result`` when it holds a ``TaskStepResult``
+            (``reject`` (#11) does not touch ``rollout`` or this
+            field, since a rejection is never appended to it).
     """
 
     id: str
@@ -293,6 +315,7 @@ class Session:
     pending_step: TaskStep | None = None
     pending_result: TaskResult | None = None
     last_step_result: TaskStepResult | RejectedTaskResult | None = None
+    last_rollout_span: tuple[int, int] | None = None
     _busy: bool = field(default=False, repr=False, compare=False)
 
 
@@ -667,7 +690,7 @@ class SessionService:
         return step
 
     async def run_step(self, session: Session) -> RunStepOutcome:
-        """Execute a session's pending ``TaskStep`` (see #5).
+        r"""Execute a session's pending ``TaskStep`` (see #5).
 
         Calls the framework's ``SupervisedTaskHandler.run_step(step)``
         on ``session.pending_step``. Real tools registered on
@@ -683,6 +706,19 @@ class SessionService:
 
         Callers should hold the session's busy lock (``lock_session``)
         for the duration of this call.
+
+        Bookkeeping for #14: the framework's ``handler.run_step()``
+        appends this turn's formatted text directly onto
+        ``handler.rollout`` (a plain ``str``) internally -- our code
+        never sees that text on its own. The framework prepends
+        ``"\n\n"`` before it when ``rollout`` is already non-empty (see
+        ``LLMAgent.run_step``), so the appended span's *start* is
+        offset past that separator when one was added -- otherwise a
+        later edit's span-splice would swallow the separator and glue
+        the edited content directly onto the previous step's text with
+        no boundary between them. The span is stored on
+        ``session.last_rollout_span``, letting ``edit_result`` (#14)
+        later splice an edit into ``rollout`` precisely.
 
         Args:
             session (Session): The session to advance. Must have
@@ -712,6 +748,7 @@ class SessionService:
                 tool,
                 recorder,
             )
+        rollout_len_before = len(session.handler.rollout)
         try:
             result = await session.handler.run_step(step)
         except Exception as e:
@@ -719,9 +756,21 @@ class SessionService:
         finally:
             session.agent.tools_registry.clear()
             session.agent.tools_registry.update(original_tools)
+        rollout_len_after = len(session.handler.rollout)
+
+        # See the docstring note above: skip the "\n\n" separator the
+        # framework prepends when rollout was already non-empty, so
+        # the recorded span covers only this step's own text.
+        _rollout_joiner_len = 2
+        span_start = (
+            rollout_len_before + _rollout_joiner_len
+            if rollout_len_before
+            else rollout_len_before
+        )
 
         session.pending_step = None
         session.last_step_result = result
+        session.last_rollout_span = (span_start, rollout_len_after)
         self.transition_need(session, "next")
 
         return RunStepOutcome(
@@ -764,6 +813,80 @@ class SessionService:
         session.pending_result = None
         self.transition_need(session, "done")
         return result
+
+    def edit_result(self, session: Session, content: str) -> TaskStepResult:
+        """Edit the last ``TaskStepResult``'s content (TRD §6.11, #14).
+
+        Rewrites ``session.last_step_result.content`` and splices the
+        edited text into ``session.handler.rollout`` at
+        ``session.last_rollout_span`` -- the exact span ``run_step``
+        (#5) recorded for that result -- so the two stay consistent.
+
+        The framework's ``rollout`` is a plain, unstructured ``str``:
+        by the time ``need == "next"`` (this call's precondition), the
+        original content is already flattened into it with no
+        retained pointer back to the ``TaskStepResult`` object, and no
+        clean framework-provided way to locate "the corresponding
+        rollout segment" to replace. Re-searching ``rollout`` for the
+        previously-appended text would be fragile (content can repeat
+        across steps), so this relies entirely on the span
+        ``run_step`` recorded rather than searching. The replacement
+        is a direct span splice -- ``rollout[:start] + content +
+        rollout[end:]`` -- which replaces run_step's whole formatted
+        per-step block (including its ``=== Task Step Start/End ===``
+        wrapper and any tool-call trace text) with the edited content
+        verbatim; this is a deliberate simplification appropriate for
+        an inspector tool, not an attempt to reproduce the framework's
+        own formatting for a hand-edited turn.
+
+        After splicing, ``last_rollout_span`` is updated to
+        ``(start, start + len(content))`` so a second edit -- or the
+        next ``run_step()``'s append -- still targets/starts at the
+        right place even if this edit changed the span's length.
+
+        Args:
+            session (Session): The session to edit. Callers should
+                obtain this via ``lock_session()`` so the mutation is
+                serialized against other calls on the same session.
+            content (str): The new content for the last step result.
+
+        Returns:
+            TaskStepResult: The now-edited step result (the same
+                object as ``session.last_step_result``).
+
+        Raises:
+            WrongNeedError: If ``session.need != "next"``.
+            NoEditableResultError: If ``session.need == "next"`` but
+                ``session.last_step_result`` isn't a ``TaskStepResult``
+                (a fresh session with no ``run_step`` yet, or one that
+                just came out of a rejection -- both legitimately land
+                on ``need == "next"`` too).
+            MissingRolloutSpanError: If ``last_step_result`` is a
+                ``TaskStepResult`` but no ``last_rollout_span`` is
+                recorded, or the recorded span is out of bounds for
+                the current ``rollout`` (either way, a server
+                invariant bug -- ``run_step`` always sets a span
+                consistent with the ``rollout`` it just wrote).
+        """
+        self.require_need(session, "next")
+        if not isinstance(session.last_step_result, TaskStepResult):
+            raise NoEditableResultError(session.id)
+        if session.last_rollout_span is None:
+            raise MissingRolloutSpanError(session.id)
+
+        start, end = session.last_rollout_span
+        rollout = session.handler.rollout
+        if not (0 <= start <= end <= len(rollout)):
+            # An out-of-bounds span would otherwise splice silently
+            # wrong (Python slicing never raises), so validate it
+            # explicitly rather than let this look like a
+            # correctly-executed edit.
+            raise MissingRolloutSpanError(session.id)
+        session.handler.rollout = rollout[:start] + content + rollout[end:]
+        session.last_rollout_span = (start, start + len(content))
+        session.last_step_result.content = content
+
+        return session.last_step_result
 
     async def abort(self, session: Session) -> None:
         """Abort a session's supervised run (TRD §6.6, see #12).
