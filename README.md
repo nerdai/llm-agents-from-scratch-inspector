@@ -10,9 +10,14 @@ assets and ships a CLI.
 
 ## Development
 
+`agent-inspector launch` takes a path to a Python script that exposes an
+`agent_builder` (an `LLMAgentBuilder` instance) at module scope -- see
+`docs/overview.md`'s "Entrypoint discovery" section for the full
+convention:
+
 ```bash
 uv sync
-uv run agent-inspector launch --dev
+uv run agent-inspector launch main.py --dev
 ```
 
 See `frontend/` for the React/Vite UI and `src/agent_inspector/` for the
