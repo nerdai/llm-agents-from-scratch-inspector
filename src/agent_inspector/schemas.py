@@ -15,7 +15,7 @@ from llm_agents_from_scratch.data_structures import (
     TaskStep,
     TaskStepResult,
 )
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from agent_inspector.services.session import Need
 
@@ -167,7 +167,13 @@ class TemplatesOut(BaseModel):
     entirely while still returning all 11 keys verbatim (per the
     issue's own recommendation -- simplest, most future-proof, no
     curated subset to drift from the framework's own type).
+
+    ``extra="allow"`` so that if the framework ever adds template
+    keys, they're preserved in the response rather than silently
+    dropped by Pydantic's default extra-field handling.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     system_message: str
     get_next_step: str
