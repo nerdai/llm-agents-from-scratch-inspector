@@ -5,9 +5,10 @@ The in-memory ``SessionStore`` foundation that owns the live
 busy lock, and the server-authoritative ``need`` state machine.
 ``SessionService.create_session_from_config()`` (see #3) builds the
 ``LLMAgent`` and calls ``run_supervised()``. ``SessionService.
-get_next_step`` (see #4), ``run_step`` (see #5), and ``complete`` (see
-#6) drive the ``need`` machine the rest of the way; ``reject``/
-``abort`` are wired up by later issues (#11-#14).
+get_next_step`` (see #4), ``run_step`` (see #5), ``complete`` (see
+#6), and ``abort`` (see #12) drive the ``need`` machine the rest of
+the way; ``reject``/edit endpoints are wired up by other issues
+(#11, #13, #14).
 """
 
 import secrets
@@ -55,6 +56,7 @@ Per the TRD §7 state machine:
     approve -> next (reject(feedback))
     next -> done (abort())
     run -> done (abort())
+    approve -> done (abort())
 """
 
 _NEED_TRANSITIONS: dict[Need, frozenset[Need]] = {
@@ -732,3 +734,32 @@ class SessionService:
         session.pending_result = None
         self.transition_need(session, "done")
         return result
+
+    async def abort(self, session: Session) -> None:
+        """Abort a session's supervised run (TRD §6.6, see #12).
+
+        Unlike other mutating calls, abort isn't tied to one specific
+        ``need``: it's allowed from any non-terminal state (``"next"``,
+        ``"run"``, or ``"approve"``); only an already-``"done"``
+        session rejects it. Calls the framework's
+        ``SupervisedTaskHandler.abort()``, which records an episode to
+        memory and resolves the handler (an ``asyncio.Future``) with
+        an exception rather than a result. Then clears any pending
+        step/result and transitions ``need`` to ``"done"``.
+
+        Args:
+            session (Session): The session to abort. Callers should
+                obtain this via ``lock_session()`` so the mutation is
+                serialized against other calls on the same session.
+
+        Raises:
+            WrongNeedError: If ``session.need == "done"`` already.
+        """
+        if session.need == "done":
+            raise WrongNeedError(session.id, "next, run, or approve", "done")
+
+        await session.handler.abort()
+
+        session.pending_step = None
+        session.pending_result = None
+        self.transition_need(session, "done")
