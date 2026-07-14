@@ -1,13 +1,6 @@
-"""Business-logic services for Agent Inspector.
+"""Session lifecycle business logic (see #2).
 
-This module is the only place domain/business logic lives. Routes
-(``routes.py``) call into services through the dependency-injected
-instances declared in ``deps.py``; services raise domain exceptions
-rather than ``fastapi.HTTPException``, leaving HTTP-status mapping to
-the route layer.
-
-This module contains ``HealthService`` (see #1) and ``SessionService``
-(see #2), the in-memory ``SessionStore`` foundation that owns the live
+The in-memory ``SessionStore`` foundation that owns the live
 ``LLMAgent`` + ``SupervisedTaskHandler`` per session, the per-session
 busy lock, and the server-authoritative ``need`` state machine. Actual
 session creation (constructing an ``LLMAgent`` and calling
@@ -25,6 +18,13 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from llm_agents_from_scratch import LLMAgent
+
+from agent_inspector.errors import (
+    InvalidNeedTransitionError,
+    SessionBusyError,
+    SessionNotFoundError,
+    WrongNeedError,
+)
 
 Need = Literal["next", "run", "approve", "done"]
 """The server-authoritative state a session is waiting in.
@@ -51,110 +51,6 @@ _SESSION_ID_PREFIX = "sess_"
 _SESSION_ID_TOKEN_BYTES = 8
 
 
-class HealthService:
-    """Reports whether the backend process is up and responsive."""
-
-    def check(self) -> dict[str, str]:
-        """Return the current liveness status of the backend.
-
-        Returns:
-            dict[str, str]: A status payload, e.g. ``{"status": "ok"}``.
-        """
-        return {"status": "ok"}
-
-
-class SessionServiceError(Exception):
-    """Base class for all ``SessionService`` domain exceptions.
-
-    Framework-agnostic by design: ``services.py`` must not import
-    FastAPI, so it is the route layer's job to catch these and
-    translate them into ``HTTPException``s.
-    """
-
-
-class SessionNotFoundError(SessionServiceError):
-    """Raised when a ``session_id`` has no corresponding live session.
-
-    Route layer should map this to ``404``.
-    """
-
-    def __init__(self, session_id: str) -> None:
-        """Initialize a SessionNotFoundError.
-
-        Args:
-            session_id (str): The unknown session identifier.
-        """
-        self.session_id = session_id
-        super().__init__(f"No session found with id {session_id!r}.")
-
-
-class SessionBusyError(SessionServiceError):
-    """Raised when a session already has a mutating call in flight.
-
-    Route layer should map this to ``409``.
-    """
-
-    def __init__(self, session_id: str) -> None:
-        """Initialize a SessionBusyError.
-
-        Args:
-            session_id (str): The busy session's identifier.
-        """
-        self.session_id = session_id
-        super().__init__(
-            f"Session {session_id!r} already has a call in flight.",
-        )
-
-
-class WrongNeedError(SessionServiceError):
-    """Raised when a call doesn't match the session's current ``need``.
-
-    Route layer should map this to ``409``.
-    """
-
-    def __init__(self, session_id: str, expected: Need, actual: Need) -> None:
-        """Initialize a WrongNeedError.
-
-        Args:
-            session_id (str): The affected session's identifier.
-            expected (Need): The ``need`` the caller assumed.
-            actual (Need): The session's actual current ``need``.
-        """
-        self.session_id = session_id
-        self.expected = expected
-        self.actual = actual
-        super().__init__(
-            f"Session {session_id!r} expected need {expected!r}, but is "
-            f"currently at {actual!r}.",
-        )
-
-
-class InvalidNeedTransitionError(SessionServiceError):
-    """Raised when a ``need`` transition isn't allowed by the TRD §7 FSM.
-
-    This indicates a bug in the calling route/orchestration code (an
-    illegal transition was attempted), not bad client input. Route
-    layer should map this to ``409`` (or treat as a ``500``) rather
-    than silently allowing it.
-    """
-
-    def __init__(self, session_id: str, current: Need, target: Need) -> None:
-        """Initialize an InvalidNeedTransitionError.
-
-        Args:
-            session_id (str): The affected session's identifier.
-            current (Need): The session's current ``need``.
-            target (Need): The disallowed target ``need``.
-        """
-        self.session_id = session_id
-        self.current = current
-        self.target = target
-        super().__init__(
-            f"Session {session_id!r} cannot transition from "
-            f"{current!r} to {target!r}.",
-        )
-
-
 @dataclass
 class Session:
     """In-memory state for a single supervised-run session.
@@ -178,11 +74,6 @@ class Session:
     agent: LLMAgent
     handler: Any
     need: Need = "next"
-    _lock: threading.Lock = field(
-        default_factory=threading.Lock,
-        repr=False,
-        compare=False,
-    )
     _busy: bool = field(default=False, repr=False, compare=False)
 
 
@@ -229,13 +120,12 @@ class SessionService:
         Returns:
             Session: The newly created, stored session.
         """
-        session = Session(
-            id=self._generate_session_id(),
-            agent=agent,
-            handler=handler,
-        )
         with self._registry_lock:
-            self._sessions[session.id] = session
+            session_id = self._generate_session_id()
+            while session_id in self._sessions:
+                session_id = self._generate_session_id()
+            session = Session(id=session_id, agent=agent, handler=handler)
+            self._sessions[session_id] = session
         return session
 
     def get_session(self, session_id: str) -> Session:
@@ -250,10 +140,11 @@ class SessionService:
         Raises:
             SessionNotFoundError: If no session with that id exists.
         """
-        session = self._sessions.get(session_id)
-        if session is None:
-            raise SessionNotFoundError(session_id)
-        return session
+        with self._registry_lock:
+            session = self._sessions.get(session_id)
+            if session is None:
+                raise SessionNotFoundError(session_id)
+            return session
 
     def drop_session(self, session_id: str) -> None:
         """Remove a session, discarding its handler and agent.
@@ -263,10 +154,15 @@ class SessionService:
 
         Raises:
             SessionNotFoundError: If no session with that id exists.
+            SessionBusyError: If the session has a mutating call
+                currently in flight (held via ``lock_session``).
         """
         with self._registry_lock:
-            if session_id not in self._sessions:
+            session = self._sessions.get(session_id)
+            if session is None:
                 raise SessionNotFoundError(session_id)
+            if session._busy:
+                raise SessionBusyError(session_id)
             del self._sessions[session_id]
 
     def require_need(self, session: Session, expected: Need) -> None:
@@ -323,8 +219,10 @@ class SessionService:
             SessionBusyError: If the session already has a call in
                 flight.
         """
-        session = self.get_session(session_id)
         with self._registry_lock:
+            session = self._sessions.get(session_id)
+            if session is None:
+                raise SessionNotFoundError(session_id)
             if session._busy:
                 raise SessionBusyError(session_id)
             session._busy = True
