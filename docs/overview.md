@@ -12,17 +12,19 @@ that the whole API is built around — the thing to read before touching
 routes/    -- thin FastAPI routes: parse request, call a service,
               map domain exceptions to HTTPException, return.
 services/  -- all business logic. No FastAPI/Starlette imports.
-              Raises plain exceptions (errors.py), never HTTPException.
-errors.py  -- domain exceptions shared across services/, deliberately
-              with no dependency on services/ (see its module docstring).
+              Raises plain exceptions (errors/), never HTTPException.
+errors/    -- domain exceptions, one module per domain concern,
+              deliberately with no dependency on the module they
+              serve (see its package docstring).
 deps.py    -- FastAPI DI wiring: Annotated[..., Depends(...)] aliases,
               and the process-wide service singletons.
 ```
 
-One module per domain concern in both `services/` and `routes/` (e.g.
-`services/session.py` pairs with `routes/session.py`). Neither package
-re-exports from its `__init__.py` — always import from the specific
-submodule, so it's unambiguous where something lives.
+One module per domain concern in `services/`, `routes/`, and `errors/`
+(e.g. `services/session.py` pairs with `routes/session.py` and
+`errors/session.py`). None of these packages re-export from their
+`__init__.py` — always import from the specific submodule, so it's
+unambiguous where something lives.
 
 ## Session lifecycle
 
@@ -97,15 +99,49 @@ in a diagram doesn't, on its own):
 `reject` and `abort` (the two remaining edges above) aren't implemented yet
 — issues #11-#14.
 
-## Known placeholder: the hardcoded tool
+## Entrypoint discovery (ADR-002)
 
-`create_session_from_config` (#3) always registers exactly one real tool,
-`next_number` (a Hailstone-sequence step function), regardless of what a
-client's `function_tools` request field names — arbitrary tool
-registration is out of scope for now. The broader direction is to replace
-config-driven session creation with something closer to how `gradio`
-discovers a user's app: a user writes their own `main.py` that constructs
-a real `LLMAgent`, and Agent Inspector discovers and drives that instance
-instead of building one from an HTTP request payload. Don't invest further
-in generalizing the config-driven path (`function_tools`/`skills_scopes`/
-`mcp_servers`) ahead of that change.
+`POST /api/sessions` no longer builds an `LLMAgent` from HTTP config
+(`model`/`think`/`function_tools`/...) — see
+[ADR-002](../.claude/docs/adr/ADR-002-convention-based-entrypoint-discovery.md)
+for the full rationale. Instead:
+
+1. The user writes a Python script (e.g. `main.py`) that constructs an
+   `LLMAgentBuilder` (`llm_agents_from_scratch.agent.builder`) — real
+   tools, skills, memories, and a model, all in code via its fluent
+   `with_*` methods — and exposes it at a well-known module-level name:
+
+   ```python
+   from llm_agents_from_scratch import LLMAgentBuilder
+   from llm_agents_from_scratch.llms import OllamaLLM
+
+   agent_builder = (
+       LLMAgentBuilder()
+       .with_llm(OllamaLLM(model="qwen3:14b"))
+       .with_tool(my_tool)
+   )
+   ```
+
+2. `agent-inspector launch main.py` imports that script (standard
+   `importlib` machinery against the file path, the same mechanism
+   Gradio uses to discover a user's `demo` object) and looks up
+   `agent_builder` on it. See `discovery.py` for the exact mechanism
+   and every failure mode it turns into a clear, actionable error
+   (script not found, import failure, missing/wrong-typed
+   `agent_builder`, or a builder with no `.with_llm(...)` called) —
+   all of which are caught and reported at `launch` time, not lazily
+   on the first `POST /sessions`.
+
+3. `SessionService.create_session_from_config` calls
+   `agent_builder.build()` once per new session (see `deps.py`'s
+   `configure_agent_builder`, which wires the CLI-discovered builder
+   into the process-wide `SessionService`). Each call returns an
+   independent `LLMAgent` — this matters because `run_step`'s
+   tool-call recording temporarily mutates `session.agent
+   .tools_registry` in place, and two sessions sharing one `LLMAgent`
+   instance would race on that mutation.
+
+`task` (the instruction to run) is the only thing that still comes from
+the client at session-creation time — `CreateSessionRequest` is just
+`{task: str}`. Surfacing the discovered builder's real tools/skills in
+`CreateSessionResponse` is issue #8/#9's job, not #47's.
