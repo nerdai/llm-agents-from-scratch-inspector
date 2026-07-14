@@ -11,11 +11,12 @@ from typing import Any, Literal, TypeAlias
 from llm_agents_from_scratch.data_structures import (
     RejectedTaskResult,
     Task,
+    TaskResult,
     TaskStep,
     TaskStepResult,
 )
 from llm_agents_from_scratch.data_structures.skill import SkillScope
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from agent_inspector.services.session import Need
 
@@ -187,3 +188,85 @@ class EditResultResponse(BaseModel):
     result: TaskStepResultOut
     edited: bool = True
     need: Need
+
+
+class RolloutResponse(BaseModel):
+    """Response body for ``GET /api/sessions/{id}/rollout`` (see #15).
+
+    ``handler.rollout`` is confirmed a plain ``str`` (TRD §6.8) -- this
+    wraps it in a minimal, named response shape rather than returning a
+    bare string.
+    """
+
+    rollout: str
+
+
+class TemplatesOut(BaseModel):
+    """Wire representation of ``GET /api/templates`` (TRD §6.9, see #15).
+
+    Not a ``TypeAlias`` to the framework's own ``LLMAgentTemplates``
+    like ``TaskOut``/``TaskStepResultOut`` above, unlike those: it's a
+    ``TypedDict`` (not a Pydantic ``BaseModel``), and Pydantic can only
+    build a schema for a ``typing.TypedDict`` on Python >= 3.12 --
+    this project supports 3.10+, so using it directly as a FastAPI
+    response type breaks on 3.10/3.11 (confirmed via CI:
+    ``PydanticUserError: Please use typing_extensions.TypedDict``).
+    A real ``BaseModel`` with the same 11 fields, populated from
+    ``default_templates`` by keyword unpacking, sidesteps that
+    entirely while still returning all 11 keys verbatim (per the
+    issue's own recommendation -- simplest, most future-proof, no
+    curated subset to drift from the framework's own type).
+
+    ``extra="allow"`` so that if the framework ever adds template
+    keys, they're preserved in the response rather than silently
+    dropped by Pydantic's default extra-field handling.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    system_message: str
+    get_next_step: str
+    step_rollout_chat_message: str
+    step_rollout_content_instruction: str
+    step_rollout_content_tool_call_request: str
+    run_step_system_message_without_rollout: str
+    run_step_system_message: str
+    run_step_user_message: str
+    skills_catalog: str
+    memories: str
+    approval_rejection_feedback: str
+
+
+class SessionConfigOut(BaseModel):
+    """Wire representation of ``SessionConfig`` (see #15).
+
+    See ``services.session.SessionConfig``'s docstring for what each
+    field means and why ``model`` is best-effort.
+    """
+
+    tools: list[str]
+    skills: list[str]
+    model: str | None = None
+
+
+TaskResultOut: TypeAlias = TaskResult
+"""Wire representation of the framework's ``TaskResult`` -- a plain
+alias, same rationale as ``TaskOut`` above."""
+
+
+class SessionStateResponse(BaseModel):
+    """Response body for ``GET /api/sessions/{id}`` (TRD §6.7, see #15).
+
+    Full session state for a UI reload. See
+    ``services.session.SessionService.get_session_state``'s docstring
+    for exactly how ``final_result`` is derived across the ``need``
+    lifecycle.
+    """
+
+    session_id: str
+    need: Need
+    step_counter: int
+    rollout: str
+    tool_call_history: list[ToolCallTraceOut]
+    config: SessionConfigOut
+    final_result: TaskResultOut | None = None

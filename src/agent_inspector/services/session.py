@@ -17,9 +17,13 @@ import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from llm_agents_from_scratch import LLMAgent, LLMAgentBuilder
+from llm_agents_from_scratch.agent.templates import (
+    LLMAgentTemplates,
+    default_templates,
+)
 from llm_agents_from_scratch.base.tool import AsyncBaseTool, BaseTool
 from llm_agents_from_scratch.data_structures import (
     NextStepDecision,
@@ -307,6 +311,16 @@ class Session:
             ``last_step_result`` when it holds a ``TaskStepResult``
             (``reject`` (#11) does not touch ``rollout`` or this
             field, since a rejection is never appended to it).
+        tool_call_history (list[ToolCallTrace]): Every ``ToolCallTrace``
+            recorded across every ``run_step()`` call so far, in call
+            order (see #15). The framework's own
+            ``RunStepOutcome.tool_calls`` is built fresh per call and
+            handed back to the caller once, with nothing retaining it
+            afterwards -- this is our own accumulating bookkeeping, so
+            ``GET /sessions/{id}`` (see #15) can return a full call
+            trace across the session's lifetime, not just the most
+            recent call. Appended to (never cleared) by ``run_step``
+            (#5); empty for a fresh session.
     """
 
     id: str
@@ -317,6 +331,7 @@ class Session:
     pending_result: TaskResult | None = None
     last_step_result: TaskStepResult | RejectedTaskResult | None = None
     last_rollout_span: tuple[int, int] | None = None
+    tool_call_history: list[ToolCallTrace] = field(default_factory=list)
     _busy: bool = field(default=False, repr=False, compare=False)
 
 
@@ -364,6 +379,82 @@ class NextStepFinalOutcome:
 
 
 NextStepOutcome = NextStepDecisionOutcome | NextStepFinalOutcome
+
+
+@dataclass(frozen=True)
+class SessionConfig:
+    """Read-only, informational session config (TRD §6.7, see #15).
+
+    Surfaces what the discovered ``LLMAgentBuilder`` (ADR-002, #47)
+    fixed for this session's agent -- model/tools/skills are no longer
+    client-supplied per-request, so this is the read-only window onto
+    what they actually are, not a settable config.
+
+    Attributes:
+        tools (list[str]): Names of every tool registered on
+            ``session.agent`` (``session.agent.tools_registry``'s
+            keys, sorted). A second agent's parallel work on #8/#9 is
+            building a fuller tools/skills surfacing mechanism for
+            ``CreateSessionResponse``; this is a separate, deliberately
+            minimal surfacing for this endpoint, expected to be
+            reconciled against that work later.
+        skills (list[str]): Names of every skill discovered for this
+            session's task handler (``session.handler.skills``'s keys,
+            sorted). Discovered once, at ``run_supervised()`` time (see
+            the framework's ``TaskHandler.__init__``), so this is
+            stable for the life of the session.
+        model (str | None): Best-effort model identifier for the
+            session's backbone LLM. ``BaseLLM`` (the framework's ABC)
+            has no generic ``model`` attribute -- only concrete
+            implementations (e.g. ``OpenAILLM``, ``OllamaLLM``) define
+            ``self.model`` -- so this reads it via ``getattr`` and is
+            ``None`` for any LLM that doesn't expose one. TODO(#8/#9):
+            reconcile with that issue's fuller config surfacing once
+            one of the two PRs merges first.
+    """
+
+    tools: list[str]
+    skills: list[str]
+    model: str | None
+
+
+@dataclass(frozen=True)
+class SessionState:
+    """Full point-in-time session state for ``GET /sessions/{id}``.
+
+    TRD §6.7, see #15: everything a UI needs to rehydrate a session on
+    reload -- the ``need`` state machine's current position, the
+    handler's own bookkeeping (``step_counter``, ``rollout``), the
+    accumulated tool-call history (see ``Session.tool_call_history``),
+    the session's read-only config, and the task's final result once
+    one exists.
+
+    Attributes:
+        session_id (str): The session's identifier.
+        need (Need): The session's current ``need``.
+        step_counter (int): The framework handler's own running count
+            of executed steps (``session.handler.step_counter``).
+        rollout (str): The framework handler's full rollout text so
+            far (``session.handler.rollout``).
+        tool_call_history (list[ToolCallTrace]): Every tool call
+            executed across every ``run_step()`` call so far, in call
+            order (see ``Session.tool_call_history``).
+        config (SessionConfig): Read-only model/tools/skills info for
+            this session.
+        final_result (TaskResult | None): The task's final result, or
+            ``None`` if none exists yet. See ``get_session_state``'s
+            docstring for exactly how this is derived -- it is not
+            simply ``session.pending_result`` verbatim, since that
+            field is cleared once the operator approves it.
+    """
+
+    session_id: str
+    need: Need
+    step_counter: int
+    rollout: str
+    tool_call_history: list[ToolCallTrace]
+    config: SessionConfig
+    final_result: TaskResult | None
 
 
 class SessionService:
@@ -732,6 +823,12 @@ class SessionService:
         Callers should hold the session's busy lock (``lock_session``)
         for the duration of this call.
 
+        Bookkeeping for #15: this also appends the call's
+        ``recorder.traces`` onto ``session.tool_call_history`` -- see
+        that field's docstring for why the accumulation has to live
+        there rather than being reconstructed later from anything the
+        framework retains.
+
         Bookkeeping for #14: the framework's ``handler.run_step()``
         appends this turn's formatted text directly onto
         ``handler.rollout`` (a plain ``str``) internally -- our code
@@ -796,6 +893,7 @@ class SessionService:
         session.pending_step = None
         session.last_step_result = result
         session.last_rollout_span = (span_start, rollout_len_after)
+        session.tool_call_history.extend(recorder.traces)
         self.transition_need(session, "next")
 
         return RunStepOutcome(
@@ -982,3 +1080,119 @@ class SessionService:
         session.last_step_result = rejected
         self.transition_need(session, "next")
         return rejected
+
+    def get_rollout(self, session: Session) -> str:
+        """Return a session's full rollout text (TRD §6.8, see #15).
+
+        ``session.handler.rollout`` is confirmed a plain ``str`` that
+        the framework appends to internally as each ``run_step()`` call
+        executes (see ``run_step``'s docstring) -- this returns it
+        verbatim, no transformation needed.
+
+        Args:
+            session (Session): The session to read.
+
+        Returns:
+            str: The rollout text so far. Empty for a fresh session
+                with no ``run_step()`` calls yet.
+        """
+        # session.handler is typed `Any` (see Session's docstring), so
+        # this cast just documents what's already confirmed true at
+        # runtime rather than changing behavior.
+        return cast(str, session.handler.rollout)
+
+    def get_session_state(self, session: Session) -> SessionState:
+        """Return a session's full state for a UI reload (TRD §6.7, #15).
+
+        ``final_result`` needs a little more than a direct field read
+        to be correct across the whole ``need`` lifecycle:
+
+        * While ``need == "approve"``, ``session.pending_result`` holds
+          the LLM-proposed ``TaskResult`` still awaiting the operator's
+          decision -- that's returned directly.
+        * Once the operator calls ``complete()`` (see that method),
+          ``pending_result`` is cleared and ``need`` moves to ``"done"``
+          -- but the framework's ``SupervisedTaskHandler`` is itself an
+          ``asyncio.Future`` that ``complete()`` resolves via
+          ``set_result(result)`` (``abort()`` resolves it via
+          ``set_exception()`` instead -- see both methods' docstrings
+          in the framework). So once ``pending_result`` is gone, this
+          falls back to the handler's own resolved value:
+          ``session.handler.done()`` + ``session.handler.result()``
+          recovers the real approved result post-``complete()`` without
+          this needing its own extra persisted field for it.
+        * An aborted session (``handler.result()`` raises, since the
+          future was resolved with an exception) or one that hasn't
+          reached either terminal call yet correctly yields ``None``.
+
+        ``config`` surfaces read-only info now that model/tools/skills
+        are fixed by the discovered ``LLMAgentBuilder`` (ADR-002, #47)
+        rather than client-supplied -- see ``SessionConfig``'s
+        docstring for exactly what's included and why.
+
+        Args:
+            session (Session): The session to read state from.
+
+        Returns:
+            SessionState: Full point-in-time state for a UI reload.
+        """
+        final_result: TaskResult | None = session.pending_result
+        if final_result is None and session.handler.done():
+            try:
+                resolved = session.handler.result()
+            except Exception:
+                # abort() resolved the handler's future with an
+                # exception rather than a TaskResult -- no final
+                # result to report.
+                resolved = None
+            if isinstance(resolved, TaskResult):
+                final_result = resolved
+
+        # TODO(#8/#9): a second agent's parallel work is building a
+        # fuller tools/skills surfacing mechanism for
+        # CreateSessionResponse; this is a deliberately minimal,
+        # separate surfacing for this endpoint -- see SessionConfig's
+        # docstring.
+        model = getattr(session.agent.llm, "model", None)
+        config = SessionConfig(
+            tools=sorted(session.agent.tools_registry),
+            skills=sorted(getattr(session.handler, "skills", {})),
+            # `model` is best-effort (see SessionConfig's docstring):
+            # guard against a non-str attribute of that name existing
+            # on some LLM implementation (or a test double) so this
+            # degrades to `None` rather than ever surfacing a
+            # non-string value.
+            model=model if isinstance(model, str) else None,
+        )
+
+        return SessionState(
+            session_id=session.id,
+            need=session.need,
+            step_counter=getattr(session.handler, "step_counter", 0),
+            rollout=session.handler.rollout,
+            tool_call_history=list(session.tool_call_history),
+            config=config,
+            final_result=final_result,
+        )
+
+
+def get_templates() -> LLMAgentTemplates:
+    """Return the framework's default prompt templates (TRD §6.9, #15).
+
+    Not session-scoped, and deliberately not a ``SessionService``
+    method: ``LLMAgent`` defaults every agent's ``templates`` to this
+    same module-level ``default_templates`` instance (see
+    ``LLMAgent.__init__``), and nothing in this codebase overrides it
+    per session yet -- so the templates are the same for every session
+    (and for no session at all), and reading them needs no session
+    state whatsoever.
+
+    Returns all 11 keys ``LLMAgentTemplates`` defines, per the issue's
+    own recommendation: simplest, and future-proof against the
+    framework adding more template keys later without this silently
+    curating a stale subset.
+
+    Returns:
+        LLMAgentTemplates: The framework's default templates.
+    """
+    return default_templates

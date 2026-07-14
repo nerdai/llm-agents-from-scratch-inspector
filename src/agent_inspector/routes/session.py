@@ -35,13 +35,21 @@ from agent_inspector.schemas import (
     RejectedTaskResultOut,
     RejectRequest,
     RejectResponse,
+    RolloutResponse,
     RunStepResponse,
+    SessionConfigOut,
+    SessionStateResponse,
     SkillOut,
     TaskOut,
+    TaskResultOut,
     TaskStepResultOut,
+    TemplatesOut,
     ToolCallTraceOut,
 )
-from agent_inspector.services.session import NextStepDecisionOutcome
+from agent_inspector.services.session import (
+    NextStepDecisionOutcome,
+    get_templates,
+)
 
 router = APIRouter()
 
@@ -114,6 +122,108 @@ async def create_session(
         ],
         need=session.need,
     )
+
+
+@router.get("/sessions/{session_id}")
+async def get_session_state(
+    session_id: str,
+    session_service: SessionServiceDep,
+) -> SessionStateResponse:
+    """Return a session's full state for a UI reload (TRD §6.7, see #15).
+
+    Read-only: doesn't touch ``lock_session()`` since nothing here
+    mutates the session.
+
+    Args:
+        session_id (str): The session identifier.
+        session_service (SessionServiceDep): Injected session service.
+
+    Returns:
+        SessionStateResponse: ``need``, ``step_counter``, ``rollout``,
+            the accumulated tool-call trace, read-only config, and the
+            task's final result (``None`` if none exists yet).
+
+    Raises:
+        HTTPException: ``404`` if ``session_id`` is unknown.
+    """
+    try:
+        session = session_service.get_session(session_id)
+    except SessionNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+    state = session_service.get_session_state(session)
+    return SessionStateResponse(
+        session_id=state.session_id,
+        need=state.need,
+        step_counter=state.step_counter,
+        rollout=state.rollout,
+        tool_call_history=[
+            ToolCallTraceOut(
+                tool_name=trace.tool_name,
+                args=trace.args,
+                content=trace.content,
+                error=trace.error,
+            )
+            for trace in state.tool_call_history
+        ],
+        config=SessionConfigOut(
+            tools=state.config.tools,
+            skills=state.config.skills,
+            model=state.config.model,
+        ),
+        final_result=(
+            TaskResultOut(
+                task_id=state.final_result.task_id,
+                content=state.final_result.content,
+            )
+            if state.final_result is not None
+            else None
+        ),
+    )
+
+
+@router.get("/sessions/{session_id}/rollout")
+async def get_session_rollout(
+    session_id: str,
+    session_service: SessionServiceDep,
+) -> RolloutResponse:
+    """Return a session's rollout text (TRD §6.8, see #15).
+
+    Read-only: doesn't touch ``lock_session()`` since nothing here
+    mutates the session.
+
+    Args:
+        session_id (str): The session identifier.
+        session_service (SessionServiceDep): Injected session service.
+
+    Returns:
+        RolloutResponse: ``handler.rollout`` verbatim.
+
+    Raises:
+        HTTPException: ``404`` if ``session_id`` is unknown.
+    """
+    try:
+        session = session_service.get_session(session_id)
+    except SessionNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+    return RolloutResponse(rollout=session_service.get_rollout(session))
+
+
+@router.get("/templates")
+async def get_default_templates() -> TemplatesOut:
+    """Return the framework's default prompt templates (TRD §6.9, #15).
+
+    Not session-scoped -- every session's ``LLMAgent`` defaults to the
+    same module-level ``default_templates`` instance (see
+    ``services.session.get_templates``'s docstring), so this endpoint
+    takes no ``session_id`` and needs no ``SessionServiceDep``.
+
+    Returns:
+        TemplatesOut: All 11 keys of the framework's
+            ``LLMAgentTemplates``.
+    """
+    return TemplatesOut(**get_templates())
 
 
 @router.post("/sessions/{session_id}/next-step")
