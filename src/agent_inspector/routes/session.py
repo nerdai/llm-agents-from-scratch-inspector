@@ -9,6 +9,7 @@ here -- see ``services/session.py``.
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
+from llm_agents_from_scratch.data_structures.skill import SkillScope
 
 from agent_inspector.deps import SessionServiceDep
 from agent_inspector.errors.session import (
@@ -36,6 +37,7 @@ from agent_inspector.schemas import (
     RejectRequest,
     RejectResponse,
     RunStepResponse,
+    SkillOut,
     TaskOut,
     TaskStepResultOut,
     ToolCallTraceOut,
@@ -65,17 +67,29 @@ async def create_session(
         session_service (SessionServiceDep): Injected session service.
 
     Returns:
-        CreateSessionResponse: The new session's id, task, tools,
-            skills, and initial ``need`` (always ``"next"``).
+        CreateSessionResponse: The new session's id, task, the
+            discovered agent's real tools/skills (#8/#9), and initial
+            ``need`` (always ``"next"``).
 
     Raises:
         HTTPException: ``422`` if the request config is invalid, ``500``
             if no builder was discovered/configured for this process,
             ``502`` if the configured builder fails to build an agent.
     """
+    explicit_only_skills = (
+        set(request.explicit_only_skills)
+        if request.explicit_only_skills is not None
+        else None
+    )
     try:
         session = await session_service.create_session_from_config(
             task=request.task,
+            skills_scopes=(
+                [SkillScope(scope) for scope in request.skills_scopes]
+                if request.skills_scopes is not None
+                else None
+            ),
+            explicit_only_skills=explicit_only_skills,
         )
     except SessionConfigError as e:
         raise HTTPException(
@@ -97,6 +111,16 @@ async def create_session(
     return CreateSessionResponse(
         session_id=session.id,
         task=TaskOut(id_=task.id_, instruction=task.instruction),
+        tools=list(session.agent.tools_registry.keys()),
+        skills=[
+            SkillOut(
+                name=name,
+                description=skill.frontmatter.description,
+                scope=skill.scope,
+                explicit_only=name in (explicit_only_skills or set()),
+            )
+            for name, skill in session.handler.skills.items()
+        ],
         need=session.need,
     )
 
