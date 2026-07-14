@@ -13,8 +13,9 @@ prefix.
 
 from fastapi import APIRouter
 
-from agent_inspector.routes import health, session
+from agent_inspector.routes import health, ollama, session
 
 router = APIRouter(prefix="/api")
 router.include_router(health.router)
+router.include_router(ollama.router)
 router.include_router(session.router)

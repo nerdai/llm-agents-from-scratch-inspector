@@ -21,6 +21,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "llm-agents-from-scratch" },
     { name = "typer" },
     { name = "uvicorn", extra = ["standard"] },
@@ -39,6 +40,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115.0,<1.0.0" },
+    { name = "httpx", specifier = ">=0.28.0,<1.0.0" },
     { name = "llm-agents-from-scratch", specifier = ">=0.0.19,<0.1.0" },
     { name = "typer", specifier = ">=0.12.0,<1.0.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0,<1.0.0" },

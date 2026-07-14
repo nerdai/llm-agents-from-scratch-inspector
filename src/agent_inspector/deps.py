@@ -12,6 +12,7 @@ from fastapi import Depends
 from llm_agents_from_scratch import LLMAgentBuilder
 
 from agent_inspector.services.health import HealthService
+from agent_inspector.services.ollama import OllamaService
 from agent_inspector.services.session import SessionService
 
 _health_service = HealthService()
@@ -27,6 +28,20 @@ def get_health_service() -> HealthService:
 
 
 HealthServiceDep = Annotated[HealthService, Depends(get_health_service)]
+
+_ollama_service = OllamaService()
+
+
+def get_ollama_service() -> OllamaService:
+    """Provide the process-wide ``OllamaService`` instance.
+
+    Returns:
+        OllamaService: The shared Ollama service instance.
+    """
+    return _ollama_service
+
+
+OllamaServiceDep = Annotated[OllamaService, Depends(get_ollama_service)]
 
 # Module-level singleton: SessionService holds live in-memory session
 # state (agents, handlers, locks), so it must not be re-created per
