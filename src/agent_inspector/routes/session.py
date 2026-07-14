@@ -11,7 +11,9 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, status
 
 from agent_inspector.deps import SessionServiceDep
-from agent_inspector.errors import (
+from agent_inspector.errors.session import (
+    AgentBuilderNotConfiguredError,
+    AgentBuildError,
     MissingPendingResultError,
     MissingRolloutSpanError,
     NoEditableResultError,
@@ -32,10 +34,7 @@ from agent_inspector.schemas import (
     TaskStepResultOut,
     ToolCallTraceOut,
 )
-from agent_inspector.services.session import (
-    NEXT_NUMBER_TOOL_NAME,
-    NextStepDecisionOutcome,
-)
+from agent_inspector.services.session import NextStepDecisionOutcome
 
 router = APIRouter()
 
@@ -50,7 +49,9 @@ async def create_session(
 ) -> CreateSessionResponse:
     """Create a new supervised-run session (TRD §6.1).
 
-    Builds an ``LLMAgent`` per the request config and starts a
+    Calls ``.build()`` on the ``LLMAgentBuilder`` discovered from the
+    user's own script at CLI launch time (see ADR-002 /
+    ``discovery.py``) to obtain a fresh ``LLMAgent``, starts a
     ``run_supervised()`` handler for it, then registers the session.
 
     Args:
@@ -62,27 +63,34 @@ async def create_session(
             skills, and initial ``need`` (always ``"next"``).
 
     Raises:
-        HTTPException: ``422`` if the request config is invalid.
+        HTTPException: ``422`` if the request config is invalid, ``500``
+            if no builder was discovered/configured for this process,
+            ``502`` if the configured builder fails to build an agent.
     """
     try:
         session = await session_service.create_session_from_config(
             task=request.task,
-            model=request.model,
-            think=request.think,
-            function_tools=[ft.name for ft in request.function_tools or []],
         )
     except SessionConfigError as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=e.message,
         ) from e
+    except AgentBuilderNotConfiguredError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        ) from e
+    except AgentBuildError as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(e),
+        ) from e
 
     task = session.handler.task
     return CreateSessionResponse(
         session_id=session.id,
         task=TaskOut(id_=task.id_, instruction=task.instruction),
-        tools=[NEXT_NUMBER_TOOL_NAME],
-        skills=[],
         need=session.need,
     )
 

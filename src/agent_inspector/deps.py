@@ -9,6 +9,7 @@ DI wiring in one place as the app grows more services.
 from typing import Annotated
 
 from fastapi import Depends
+from llm_agents_from_scratch import LLMAgentBuilder
 
 from agent_inspector.services.health import HealthService
 from agent_inspector.services.session import SessionService
@@ -40,6 +41,21 @@ def get_session_service() -> SessionService:
         SessionService: The shared session service instance.
     """
     return _session_service
+
+
+def configure_agent_builder(agent_builder: LLMAgentBuilder) -> None:
+    """Wire the CLI-discovered ``LLMAgentBuilder`` into the shared service.
+
+    Called once by ``cli.py``'s ``launch`` command, after discovery
+    (see ``discovery.py``) succeeds and before the app starts serving
+    requests -- ``SessionService.create_session_from_config`` needs a
+    real builder to construct agents from (see ADR-002).
+
+    Args:
+        agent_builder (LLMAgentBuilder): The builder discovered from
+            the user's entrypoint script.
+    """
+    _session_service.agent_builder = agent_builder
 
 
 SessionServiceDep = Annotated[SessionService, Depends(get_session_service)]

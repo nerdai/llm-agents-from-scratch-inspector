@@ -12,7 +12,7 @@ from typing import cast
 import pytest
 from llm_agents_from_scratch import LLMAgent
 
-from agent_inspector.errors import (
+from agent_inspector.errors.session import (
     InvalidNeedTransitionError,
     SessionBusyError,
     SessionNotFoundError,

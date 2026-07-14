@@ -14,35 +14,17 @@ from pydantic import BaseModel, Field
 from agent_inspector.services.session import Need
 
 
-class FunctionToolSpec(BaseModel):
-    """A client-supplied function-tool description.
-
-    M1 (issue #3) accepts these but only ever registers the hardcoded
-    ``next_number`` tool -- see ``agent_inspector.services.session``.
-    Genuine arbitrary function-tool registration is issue #8 (M2).
-    """
-
-    name: str
-    signature: str | None = None
-    source: str | None = None
-
-
 class CreateSessionRequest(BaseModel):
     """Request body for ``POST /api/sessions`` (TRD §6.1).
 
-    M1 only acts on ``task``, ``model``, and ``think``.
-    ``skills_scopes``/``explicit_only_skills``/``mcp_servers`` are
-    M2/M3 scope: accepted here so well-formed clients don't get a
-    spurious ``422``, but not wired up to anything yet.
+    Per ADR-002 (#47): model/tools/skills/memories are no longer sent
+    over HTTP -- they're fixed by the ``LLMAgentBuilder`` that
+    ``agent-inspector launch <script>`` discovers from the user's own
+    script (see ``discovery.py``). ``task`` is the only thing that
+    still varies per session.
     """
 
     task: str = Field(min_length=1)
-    model: str | None = None
-    think: bool | None = None
-    function_tools: list[FunctionToolSpec] | None = None
-    skills_scopes: list[str] | None = None
-    explicit_only_skills: list[str] | None = None
-    mcp_servers: list[dict[str, Any]] | None = None
 
 
 TaskOut: TypeAlias = Task
@@ -56,12 +38,17 @@ this is a plain alias, not a copy that could drift from the real type.
 
 
 class CreateSessionResponse(BaseModel):
-    """Response body for ``POST /api/sessions`` (TRD §6.1)."""
+    """Response body for ``POST /api/sessions`` (TRD §6.1).
+
+    ``tools``/``skills`` are always empty for now -- surfacing the
+    discovered builder's real tools/skills is issue #8/#9's job, out
+    of scope for #47 (entrypoint discovery itself).
+    """
 
     session_id: str
     task: TaskOut
-    tools: list[str]
-    skills: list[Any] = Field(default_factory=list)
+    tools: list[str] = Field(default_factory=list)  # TODO(#8): real tools
+    skills: list[Any] = Field(default_factory=list)  # TODO(#9): real skills
     need: str
 
 
