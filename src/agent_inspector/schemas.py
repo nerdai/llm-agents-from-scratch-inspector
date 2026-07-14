@@ -6,7 +6,7 @@ wire-format definitions. Framework-agnostic aside from ``pydantic``
 itself -- no FastAPI imports here.
 """
 
-from typing import Any, TypeAlias
+from typing import Any, Literal, TypeAlias
 
 from llm_agents_from_scratch.data_structures import (
     RejectedTaskResult,
@@ -77,6 +77,13 @@ class RunStepResponse(BaseModel):
     tool_calls: list[ToolCallTraceOut]
     step_counter: int
     need: Need
+
+
+class AbortSessionResponse(BaseModel):
+    """Response body for ``POST /api/sessions/{id}/abort`` (see #12)."""
+
+    status: Literal["aborted"] = "aborted"
+    need: Literal["done"] = "done"
 
 
 class RejectRequest(BaseModel):

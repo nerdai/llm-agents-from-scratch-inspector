@@ -6,9 +6,9 @@ busy lock, and the server-authoritative ``need`` state machine.
 ``SessionService.create_session_from_config()`` (see #3, reworked by
 #47/ADR-002) calls the configured ``LLMAgentBuilder.build()`` and
 ``run_supervised()``. ``SessionService.get_next_step`` (see #4),
-``run_step`` (see #5), ``complete`` (see #6), and ``reject`` (see #11)
-drive the ``need`` machine the rest of the way; ``abort`` is wired up
-by a later issue (#12).
+``run_step`` (see #5), ``complete`` (see #6), ``reject`` (see #11),
+and ``abort`` (see #12) drive the ``need`` machine the rest of the
+way; edit endpoints are wired up by other issues (#13, #14).
 """
 
 import asyncio
@@ -57,6 +57,7 @@ Per the TRD §7 state machine:
     approve -> next (reject(feedback))
     next -> done (abort())
     run -> done (abort())
+    approve -> done (abort())
 """
 
 _NEED_TRANSITIONS: dict[Need, frozenset[Need]] = {
@@ -721,6 +722,35 @@ class SessionService:
         session.pending_result = None
         self.transition_need(session, "done")
         return result
+
+    async def abort(self, session: Session) -> None:
+        """Abort a session's supervised run (TRD §6.6, see #12).
+
+        Unlike other mutating calls, abort isn't tied to one specific
+        ``need``: it's allowed from any non-terminal state (``"next"``,
+        ``"run"``, or ``"approve"``); only an already-``"done"``
+        session rejects it. Calls the framework's
+        ``SupervisedTaskHandler.abort()``, which records an episode to
+        memory and resolves the handler (an ``asyncio.Future``) with
+        an exception rather than a result. Then clears any pending
+        step/result and transitions ``need`` to ``"done"``.
+
+        Args:
+            session (Session): The session to abort. Callers should
+                obtain this via ``lock_session()`` so the mutation is
+                serialized against other calls on the same session.
+
+        Raises:
+            WrongNeedError: If ``session.need == "done"`` already.
+        """
+        if session.need == "done":
+            raise WrongNeedError(session.id, "next, run, or approve", "done")
+
+        await session.handler.abort()
+
+        session.pending_step = None
+        session.pending_result = None
+        self.transition_need(session, "done")
 
     def reject(self, session: Session, feedback: str) -> RejectedTaskResult:
         """Reject the session's pending ``TaskResult`` (see #11).

@@ -23,6 +23,7 @@ from agent_inspector.errors.session import (
     WrongNeedError,
 )
 from agent_inspector.schemas import (
+    AbortSessionResponse,
     CreateSessionRequest,
     CreateSessionResponse,
     RejectedTaskResultOut,
@@ -246,6 +247,43 @@ async def complete_session(
         "result": {"task_id": result.task_id, "content": result.content},
         "need": need,
     }
+
+
+@router.post("/sessions/{session_id}/abort")
+async def abort_session(
+    session_id: str,
+    session_service: SessionServiceDep,
+) -> AbortSessionResponse:
+    """Abort a session's supervised run (TRD §6.6, see #12).
+
+    No request body: aborts whatever is currently in flight for the
+    session, regardless of whether it's waiting on ``next``, ``run``,
+    or ``approve``. Discards any pending step/result and resolves the
+    framework handler's underlying future with an exception rather
+    than a result.
+
+    Args:
+        session_id (str): The session identifier.
+        session_service (SessionServiceDep): Injected session service.
+
+    Returns:
+        AbortSessionResponse: ``{"status": "aborted", "need": "done"}``.
+
+    Raises:
+        HTTPException: ``404`` if the session doesn't exist, ``409``
+            if the session is already at ``need="done"`` or already
+            has a call in flight.
+    """
+    try:
+        with session_service.lock_session(session_id) as session:
+            await session_service.abort(session)
+            need = session.need
+    except SessionNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except (SessionBusyError, WrongNeedError) as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+
+    return AbortSessionResponse(status="aborted", need=need)
 
 
 @router.post("/sessions/{session_id}/reject")
