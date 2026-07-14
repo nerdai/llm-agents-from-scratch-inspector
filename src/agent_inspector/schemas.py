@@ -8,9 +8,11 @@ itself -- no FastAPI imports here.
 
 from typing import Any, Literal, TypeAlias
 
+from llm_agents_from_scratch.agent.templates import LLMAgentTemplates
 from llm_agents_from_scratch.data_structures import (
     RejectedTaskResult,
     Task,
+    TaskResult,
     TaskStep,
     TaskStepResult,
 )
@@ -138,3 +140,59 @@ class EditResultResponse(BaseModel):
     result: TaskStepResultOut
     edited: bool = True
     need: Need
+
+
+class RolloutResponse(BaseModel):
+    """Response body for ``GET /api/sessions/{id}/rollout`` (see #15).
+
+    ``handler.rollout`` is confirmed a plain ``str`` (TRD §6.8) -- this
+    wraps it in a minimal, named response shape rather than returning a
+    bare string.
+    """
+
+    rollout: str
+
+
+TemplatesOut: TypeAlias = LLMAgentTemplates
+"""Wire representation of ``GET /api/templates`` (TRD §6.9, see #15).
+
+A plain alias to the framework's own ``LLMAgentTemplates`` ``TypedDict``
+-- same rationale as ``TaskOut``/``TaskStepResultOut`` above: all 11
+keys are returned verbatim (per the issue's own recommendation --
+simplest, most future-proof), so there's no curated subset that could
+drift from the framework's own type."""
+
+
+class SessionConfigOut(BaseModel):
+    """Wire representation of ``SessionConfig`` (see #15).
+
+    See ``services.session.SessionConfig``'s docstring for what each
+    field means and why ``model`` is best-effort.
+    """
+
+    tools: list[str]
+    skills: list[str]
+    model: str | None = None
+
+
+TaskResultOut: TypeAlias = TaskResult
+"""Wire representation of the framework's ``TaskResult`` -- a plain
+alias, same rationale as ``TaskOut`` above."""
+
+
+class SessionStateResponse(BaseModel):
+    """Response body for ``GET /api/sessions/{id}`` (TRD §6.7, see #15).
+
+    Full session state for a UI reload. See
+    ``services.session.SessionService.get_session_state``'s docstring
+    for exactly how ``final_result`` is derived across the ``need``
+    lifecycle.
+    """
+
+    session_id: str
+    need: Need
+    step_counter: int
+    rollout: str
+    tool_call_history: list[ToolCallTraceOut]
+    config: SessionConfigOut
+    final_result: TaskResultOut | None = None
