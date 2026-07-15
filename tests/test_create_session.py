@@ -226,8 +226,15 @@ class TestCreateSessionRoute:
     def test_returns_expected_response_shape(
         self,
         agent_builder: LLMAgentBuilder,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """A well-formed request gets back the TRD §6.1 response shape."""
+        # An empty tmp_path as cwd, not wherever the suite happens to
+        # run from -- the repo root itself ships a real skill
+        # (`.agents/skills/stop-at-one`, for `demo.py`) that would
+        # otherwise leak into "no skills discoverable" expectations.
+        monkeypatch.chdir(tmp_path)
         client = _client(SessionService(agent_builder=agent_builder))
 
         response = client.post(
@@ -465,8 +472,11 @@ class TestCreateSessionRouteSkills:
     def test_omitting_skills_fields_returns_empty_skills(
         self,
         agent_builder: LLMAgentBuilder,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """No skills discoverable from the test cwd -> ``skills: []``."""
+        monkeypatch.chdir(tmp_path)
         client = _client(SessionService(agent_builder=agent_builder))
 
         response = client.post("/api/sessions", json={"task": _HAILSTONE_TASK})

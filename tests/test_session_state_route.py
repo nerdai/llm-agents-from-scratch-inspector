@@ -11,6 +11,7 @@ framework handler's own resolved ``asyncio.Future`` once
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Sequence
 from unittest.mock import AsyncMock
 
@@ -189,8 +190,15 @@ class TestGetSessionStateFresh:
         self,
         client: TestClient,
         session_service: SessionService,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Fresh state: empty rollout/history, no final result."""
+        # An empty tmp_path as cwd, not wherever the suite happens to
+        # run from -- the repo root itself ships a real skill
+        # (`.agents/skills/stop-at-one`, for `demo.py`) that would
+        # otherwise leak into "no skills discoverable" expectations.
+        monkeypatch.chdir(tmp_path)
         session = await _build_fresh_session(session_service)
 
         response = client.get(f"/api/sessions/{session.id}")
