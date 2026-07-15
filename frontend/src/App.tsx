@@ -16,8 +16,16 @@ import { useSession } from './session/useSession'
  * and approval-gate dialog are #21-#24's scope, built on top of this.
  */
 function App() {
-  const { state, start, getNextStep, runNextStep, approve, reset } =
-    useSession()
+  const {
+    state,
+    start,
+    getNextStep,
+    runNextStep,
+    approve,
+    editStep,
+    editResult,
+    reset,
+  } = useSession()
 
   const hasSession = state.sessionId !== null
   const isDone = state.completedResult !== null
@@ -89,6 +97,8 @@ function App() {
             need={state.need}
             busy={state.busy}
             onApprove={approve}
+            onEditStep={editStep}
+            onEditResult={editResult}
           />
         </section>
       )}
