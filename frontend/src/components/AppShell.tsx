@@ -10,10 +10,17 @@ interface AppShellProps {
    * to be visible/usable before any session exists (so it can't live
    * in the rail or `<main>`, both of which are session-scoped). */
   headerActions?: ReactNode
+  /** Optional content pinned to the top of the main content area,
+   * above the independently-scrollable `children` below it -- e.g.
+   * `Controls` (get_next_step()/run_step()/abort), so it stays
+   * reachable while a long `Timeline` scrolls underneath instead of
+   * requiring a scroll back up to reach it. */
+  mainHeader?: ReactNode
   /** The main content area -- today this is `App.tsx`'s
-   * error banner + `Controls` + `Timeline`, but #22-#24 own what
-   * actually renders here; this component only owns the surrounding
-   * chrome (app bar + rail + scroll container), not the content. */
+   * `Timeline` (plus `RehydratedSessionView` when applicable), but
+   * #22/#24 own what actually renders here; this component only owns
+   * the surrounding chrome (app bar + rail + sticky header + scroll
+   * container), not the content. */
   children: ReactNode
 }
 
@@ -23,13 +30,19 @@ interface AppShellProps {
  * area on the right -- replacing the previous centered single-column
  * layout.
  *
- * Deliberately a thin, content-agnostic wrapper: it accepts `rail` and
- * `children` as slots rather than hard-coding what goes in them, so
- * #22 (timeline/operation cards), #23 (drawers, approval gate, error
- * toasts), and #24 (reload rehydration) can build inside the `<main>`
- * slot without needing to also restructure this shell.
+ * Deliberately a thin, content-agnostic wrapper: it accepts `rail`,
+ * `mainHeader`, and `children` as slots rather than hard-coding what
+ * goes in them. `mainHeader` sits outside the `<main>` scroll
+ * container (its own `flex-none` row), so pinned content like
+ * `Controls` stays reachable without scrolling back up through a long
+ * `children` (e.g. `Timeline`).
  */
-function AppShell({ rail, headerActions, children }: AppShellProps) {
+function AppShell({
+  rail,
+  headerActions,
+  mainHeader,
+  children,
+}: AppShellProps) {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
       <header className="flex h-14 flex-none items-center gap-3.5 border-b bg-card px-5">
@@ -53,9 +66,16 @@ function AppShell({ rail, headerActions, children }: AppShellProps) {
         <aside className="w-80 flex-none overflow-y-auto border-r bg-muted/30">
           {rail}
         </aside>
-        <main className="min-w-0 flex-1 overflow-y-auto">
-          <div className="mx-auto flex max-w-3xl flex-col gap-4.5 px-5 py-8 pb-16">
-            {children}
+        <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          {mainHeader && (
+            <div className="flex-none border-b bg-background px-5 py-3.5">
+              <div className="mx-auto max-w-3xl">{mainHeader}</div>
+            </div>
+          )}
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="mx-auto flex max-w-3xl flex-col gap-4.5 px-5 py-8 pb-16">
+              {children}
+            </div>
           </div>
         </main>
       </div>

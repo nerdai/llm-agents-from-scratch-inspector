@@ -870,6 +870,22 @@ class SessionService:
                 tool,
                 recorder,
             )
+        # `from_scratch__use_skill` isn't in `tools_registry` -- the
+        # framework resolves it via a separate, handler-scoped
+        # `_use_skill_tool` attribute instead (see `TaskHandler.run_step`
+        # in the framework's `agent/llm_agent.py`), so wrapping only
+        # `tools_registry` would silently miss every skill invocation:
+        # it would still execute for real, just with no trace recorded.
+        original_use_skill_tool = getattr(
+            session.handler,
+            "_use_skill_tool",
+            None,
+        )
+        if original_use_skill_tool is not None:
+            session.handler._use_skill_tool = _wrap_tool_for_recording(
+                original_use_skill_tool,
+                recorder,
+            )
         rollout_len_before = len(session.handler.rollout)
         try:
             result = await session.handler.run_step(step)
@@ -878,6 +894,8 @@ class SessionService:
         finally:
             session.agent.tools_registry.clear()
             session.agent.tools_registry.update(original_tools)
+            if original_use_skill_tool is not None:
+                session.handler._use_skill_tool = original_use_skill_tool
         rollout_len_after = len(session.handler.rollout)
 
         # See the docstring note above: skip the "\n\n" separator the

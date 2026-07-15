@@ -15,6 +15,7 @@ scope.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Sequence
 
 import pytest
@@ -32,6 +33,7 @@ from llm_agents_from_scratch.data_structures import (
     ToolCall,
     ToolCallResult,
 )
+from llm_agents_from_scratch.data_structures.skill import SkillScope
 from llm_agents_from_scratch.tools.simple_function import SimpleFunctionTool
 
 from agent_inspector.deps import get_session_service
@@ -44,6 +46,26 @@ _SECOND_STEP_COUNTER = 2
 def next_number(x: int) -> int:
     """The only real M1 tool: returns the next number after ``x``."""
     return x + 1
+
+
+def _write_skill(root: Path, name: str) -> None:
+    """Write a minimal, valid on-disk skill under ``root/.agents/skills``.
+
+    Same pattern as ``test_create_session.py``'s ``_write_skill`` --
+    ``discover_skills`` resolves ``SkillScope.PROJECT`` to ``Path.cwd()
+    / SKILL_SUBDIR``, so tests pair this with ``monkeypatch.chdir(root)``.
+
+    Args:
+        root (Path): Directory to create ``.agents/skills/<name>/``
+            under (typically a ``tmp_path`` fixture).
+        name (str): The skill's name (must match the directory name).
+    """
+    skill_dir = root / ".agents" / "skills" / name
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        f"---\nname: {name}\ndescription: A test skill.\n---\n\n"
+        "Skill body content, non-empty as the framework requires.\n",
+    )
 
 
 class _ScriptedLLM(BaseLLM):
@@ -253,6 +275,72 @@ class TestRunStepSuccess:
 
         assert second.status_code == status.HTTP_200_OK
         assert second.json()["step_counter"] == _SECOND_STEP_COUNTER
+
+
+class TestRunStepSkillInvocation:
+    """A ``from_scratch__use_skill`` call is captured in the trace.
+
+    Regression coverage: ``from_scratch__use_skill`` isn't registered
+    in ``agent.tools_registry`` like a regular tool -- the framework
+    resolves it via the handler's separate ``_use_skill_tool``
+    attribute instead (``TaskHandler.run_step``). Wrapping only
+    ``tools_registry`` for recording silently missed every skill
+    invocation: the skill still activated for real, but ``tool_calls``
+    came back empty with no trace of what happened.
+    """
+
+    async def test_use_skill_call_appears_in_trace(
+        self,
+        client: TestClient,
+        session_service: SessionService,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The skill's real activation content lands in the trace."""
+        _write_skill(tmp_path, "greeter")
+        monkeypatch.chdir(tmp_path)
+
+        tool_call = ToolCall(
+            tool_name="from_scratch__use_skill",
+            arguments={"name": "greeter"},
+        )
+        llm = _ScriptedLLM(tool_call=tool_call, final_content="Activated.")
+        agent = LLMAgent(llm=llm, tools=[])
+        task = Task(instruction="Use the greeter skill.")
+        handler = await agent.run_supervised(
+            task,
+            skills_scopes=[SkillScope.PROJECT],
+        )
+        assert handler._use_skill_tool is not None  # sanity: skill wired up
+
+        step = await handler.get_next_step(None)
+        assert isinstance(step, TaskStep)
+        session = session_service.create_session(agent=agent, handler=handler)
+        session.pending_step = step
+        session.need = "run"  # type: ignore[assignment]
+
+        response = client.post(f"/api/sessions/{session.id}/run-step")
+
+        assert response.status_code == status.HTTP_200_OK
+        body = response.json()
+        assert len(body["tool_calls"]) == 1
+        trace = body["tool_calls"][0]
+        assert trace["tool_name"] == "from_scratch__use_skill"
+        assert trace["args"] == {"name": "greeter"}
+        assert trace["error"] is False
+        assert '<skill_content name="greeter">' in trace["content"]
+
+        # Also accumulates onto the session's cross-call history (#15),
+        # same as any other tool call.
+        assert len(session.tool_call_history) == 1
+        assert session.tool_call_history[0].tool_name == (
+            "from_scratch__use_skill"
+        )
+
+        # The wrapper is unwrapped again afterwards -- the handler's
+        # real UseSkillTool is restored, not left wrapped indefinitely.
+        assert handler._use_skill_tool is not None
+        assert type(handler._use_skill_tool).__name__ == "UseSkillTool"
 
 
 class TestRunStepWrongNeed:
