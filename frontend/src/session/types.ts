@@ -2,6 +2,7 @@ import type { ApiError } from '../api/client'
 import type {
   NextStepDecisionOut,
   Need,
+  SessionConfigOut,
   SkillOut,
   TaskOut,
   TaskResultOut,
@@ -53,6 +54,24 @@ export interface SessionState {
   /** The task's final result, once approved (`need === "done"`). */
   completedResult: TaskResultOut | null
   error: ApiErrorInfo | null
+  /** `true` once this state came from `GET /api/sessions/{id}` (#24)
+   * rather than being built up live from `session/created` onward.
+   * `timeline` is *not* reconstructed on rehydration (the backend
+   * doesn't persist the structured, per-operation shape it's made of
+   * -- only the fields below) -- `rehydrated` lets the UI render an
+   * honest summary of what's actually available instead of pretending
+   * to have the original step-by-step cards. */
+  rehydrated: boolean
+  /** The whole-conversation formatted rollout text, present only when
+   * `rehydrated` (see `SessionStateResponse.rollout`). */
+  rollout: string | null
+  /** The flat, not-grouped-by-step tool-call trace from a rehydrated
+   * session (see `SessionStateResponse.tool_call_history`). */
+  toolCallHistory: ToolCallTraceOut[]
+  /** `SessionStateResponse.step_counter` as of rehydration. */
+  stepCounter: number
+  /** `SessionStateResponse.config`, present only when `rehydrated`. */
+  config: SessionConfigOut | null
 }
 
 export const initialSessionState: SessionState = {
@@ -66,4 +85,9 @@ export const initialSessionState: SessionState = {
   pendingResult: null,
   completedResult: null,
   error: null,
+  rehydrated: false,
+  rollout: null,
+  toolCallHistory: [],
+  stepCounter: 0,
+  config: null,
 }

@@ -9,6 +9,7 @@ import type {
   NextStepResponse,
   RejectResponse,
   RunStepResponse,
+  SessionStateResponse,
 } from '../api/types'
 import {
   type ApiErrorInfo,
@@ -32,6 +33,7 @@ export type Action =
   | { type: 'busy/start' }
   | { type: 'busy/error'; error: ApiErrorInfo }
   | { type: 'session/created'; payload: CreateSessionResponse }
+  | { type: 'session/rehydrated'; payload: SessionStateResponse }
   | { type: 'next-step/succeeded'; payload: NextStepResponse }
   | { type: 'run-step/succeeded'; payload: RunStepResponse }
   | { type: 'step/edited'; payload: EditStepResponse }
@@ -85,6 +87,44 @@ export function sessionReducer(
         tools: res.tools,
         skills: res.skills,
         need: res.need,
+      }
+    }
+
+    case 'session/rehydrated': {
+      // Reconstructing the exact live `timeline: TimelineEntry[]` isn't
+      // possible from `SessionStateResponse` -- it only has the
+      // whole-conversation `rollout` string and a flat
+      // `tool_call_history`, not the structured per-operation shape
+      // `timeline` is made of (see `types.ts`'s `rehydrated` doc and
+      // this PR's description). `timeline` is deliberately left empty
+      // here rather than fabricated; `RehydratedSessionView` renders
+      // the raw fields honestly instead, and any *new*
+      // get_next_step()/run_step() calls made after this reload
+      // accumulate into `timeline` as usual.
+      //
+      // `pendingResult` mirrors the live reducer's invariant (set once
+      // a `TaskResult` exists and never cleared) so the approval gate
+      // / resolved `FinalResultCard` renders correctly regardless of
+      // whether `need` is `"approve"` or `"done"`.
+      const res = action.payload
+      return {
+        ...initialSessionState,
+        sessionId: res.session_id,
+        need: res.need,
+        // `SessionConfigOut.tools` is the same `string[]` shape as
+        // `SessionState.tools` -- an honest, non-fabricated value to
+        // reuse directly (unlike `skills`, which the config only gives
+        // as bare names, not the full `SkillOut` the live flow has;
+        // `RehydratedSessionView` renders those names separately
+        // instead of forcing them into `SkillOut[]`).
+        tools: res.config.tools,
+        rehydrated: true,
+        rollout: res.rollout,
+        toolCallHistory: res.tool_call_history,
+        stepCounter: res.step_counter,
+        config: res.config,
+        pendingResult: res.final_result,
+        completedResult: res.need === 'done' ? res.final_result : null,
       }
     }
 

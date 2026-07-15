@@ -1,4 +1,4 @@
-import { useCallback, useReducer } from 'react'
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import {
   useAbort,
   useComplete,
@@ -8,6 +8,7 @@ import {
   useNextStep,
   useReject,
   useRunStep,
+  useSessionState,
 } from '../api/hooks'
 import type { ApiError } from '../api/client'
 import type { CreateSessionRequest } from '../api/types'
@@ -29,6 +30,29 @@ function toErrorInfo(err: unknown): ApiErrorInfo {
     status: 0,
     detail: err instanceof Error ? err.message : String(err),
   }
+}
+
+/** The URL query param a session id is read from/written to (#24). No
+ * router library: reload/copy-paste/back-forward all work off plain
+ * `window.history`/`URLSearchParams`. */
+const SESSION_QUERY_PARAM = 'session'
+
+function readSessionIdFromUrl(): string | null {
+  return new URLSearchParams(window.location.search).get(SESSION_QUERY_PARAM)
+}
+
+function writeSessionIdToUrl(sessionId: string | null): void {
+  const url = new URL(window.location.href)
+  if (sessionId) {
+    url.searchParams.set(SESSION_QUERY_PARAM, sessionId)
+  } else {
+    url.searchParams.delete(SESSION_QUERY_PARAM)
+  }
+  // `replaceState`, not `pushState`: this mirrors the reducer's
+  // already-current `sessionId`, it doesn't introduce a new user-facing
+  // navigation step -- browser back/forward should move between actual
+  // page loads, not between every session-id sync.
+  window.history.replaceState(null, '', url)
 }
 
 /**
@@ -55,6 +79,50 @@ export function useSession() {
   const editResultMutation = useEditResult()
   const rejectMutation = useReject()
   const abortMutation = useAbort()
+
+  // On-mount rehydration (#24): a `session_id` in the URL is read once
+  // (the lazy initializer only runs on first render) and drives
+  // `useSessionState` for exactly one request -- `hasRehydratedRef`
+  // guards the effect below so a background refetch (e.g. on window
+  // refocus) can never re-dispatch and stomp on live session state
+  // gathered since.
+  const [rehydrateSessionId] = useState<string | null>(() =>
+    readSessionIdFromUrl(),
+  )
+  const rehydrateQuery = useSessionState(rehydrateSessionId)
+  const hasRehydratedRef = useRef(false)
+  // Nothing left to rehydrate -- either there was no `?session=` param
+  // to begin with, or the one attempt above has already resolved
+  // (success or failure). Gates the URL-sync effect below so it can't
+  // stomp a still-in-flight `?session=` param with the reducer's
+  // not-yet-updated `null` `sessionId`.
+  const rehydrationSettled =
+    rehydrateSessionId === null ||
+    rehydrateQuery.isSuccess ||
+    rehydrateQuery.isError
+
+  useEffect(() => {
+    if (hasRehydratedRef.current) return
+    if (rehydrateQuery.isSuccess) {
+      hasRehydratedRef.current = true
+      dispatch({ type: 'session/rehydrated', payload: rehydrateQuery.data })
+    } else if (rehydrateQuery.isError) {
+      // Unknown/expired session_id (404) or any other failure -- fail
+      // gracefully rather than retrying forever: fall back to the
+      // normal "no session yet" state and let the URL-sync effect
+      // below drop the stale param.
+      hasRehydratedRef.current = true
+    }
+  }, [rehydrateQuery.isSuccess, rehydrateQuery.isError, rehydrateQuery.data])
+
+  // Keeps the URL's `?session=` param in sync with the live session id
+  // -- written whenever a session is created or rehydrated, cleared on
+  // reset/abort-to-nothing -- so copying the URL, refreshing, or using
+  // the browser's own back/forward lands back in the same session.
+  useEffect(() => {
+    if (!rehydrationSettled) return
+    writeSessionIdToUrl(state.sessionId)
+  }, [state.sessionId, rehydrationSettled])
 
   const start = useCallback(
     async (body: CreateSessionRequest) => {
@@ -168,6 +236,10 @@ export function useSession() {
 
   return {
     state,
+    /** `true` while the on-mount rehydration attempt (see above) is
+     * still in flight -- lets the UI show a neutral "restoring…" state
+     * instead of flashing `TaskForm` before falling back to it. */
+    rehydrating: !rehydrationSettled,
     start,
     getNextStep,
     runNextStep,

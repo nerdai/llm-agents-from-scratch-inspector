@@ -21,7 +21,12 @@ function Timeline({
   busy,
   onApprove,
 }: TimelineProps) {
-  if (entries.length === 0) {
+  // `pendingResult` can be non-null with an empty `entries` right after
+  // a rehydrated reload (#24) -- the backend's `final_result` exists,
+  // but the structured `TimelineEntry` cards that produced it don't
+  // (see `RehydratedSessionView`). Only take the empty-state early
+  // return when there's truly nothing to show.
+  if (entries.length === 0 && !pendingResult) {
     return (
       <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
         No calls yet — click get_next_step() to begin.

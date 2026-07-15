@@ -3,6 +3,7 @@ import TaskForm from './components/TaskForm'
 import Controls from './components/Controls'
 import Timeline from './components/Timeline'
 import ErrorBanner from './components/ErrorBanner'
+import RehydratedSessionView from './components/RehydratedSessionView'
 import { useSession } from './session/useSession'
 
 /**
@@ -12,12 +13,21 @@ import { useSession } from './session/useSession'
  *
  * Functionally unchanged from the pre-#20 prototype: create a
  * session, alternate get_next_step()/run_step(), and approve the
- * final TaskResult. The config rail, redesigned timeline, drawers,
- * and approval-gate dialog are #21-#24's scope, built on top of this.
+ * final TaskResult. The config rail and redesigned timeline are
+ * #21/#22's scope, built on top of this; #24 (this change) adds
+ * reload rehydration -- restoring a session from `?session=<id>` on
+ * mount via `RehydratedSessionView` below.
  */
 function App() {
-  const { state, start, getNextStep, runNextStep, approve, reset } =
-    useSession()
+  const {
+    state,
+    rehydrating,
+    start,
+    getNextStep,
+    runNextStep,
+    approve,
+    reset,
+  } = useSession()
 
   const hasSession = state.sessionId !== null
   const isDone = state.completedResult !== null
@@ -35,7 +45,13 @@ function App() {
       {state.error && <ErrorBanner error={state.error} />}
 
       {!hasSession ? (
-        <TaskForm onCreate={start} disabled={state.busy} />
+        rehydrating ? (
+          <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+            Restoring session…
+          </p>
+        ) : (
+          <TaskForm onCreate={start} disabled={state.busy} />
+        )
       ) : (
         <section className="flex flex-col gap-4.5">
           <div className="flex flex-col gap-2 rounded-lg border px-4.5 py-3.5">
@@ -51,7 +67,12 @@ function App() {
               <span className="text-[10.5px] font-semibold tracking-wide text-muted-foreground uppercase">
                 task
               </span>
-              <p className="text-sm">{state.task?.instruction}</p>
+              <p className="text-sm">
+                {state.task?.instruction ??
+                  (state.rehydrated
+                    ? '(not returned by GET /api/sessions/{id} — see rollout below)'
+                    : '')}
+              </p>
             </div>
             <div>
               <span className="text-[10.5px] font-semibold tracking-wide text-muted-foreground uppercase">
@@ -81,6 +102,16 @@ function App() {
             onGetNextStep={getNextStep}
             onRunStep={runNextStep}
           />
+
+          {state.rehydrated && (
+            <RehydratedSessionView
+              rollout={state.rollout ?? ''}
+              toolCallHistory={state.toolCallHistory}
+              stepCounter={state.stepCounter}
+              config={state.config}
+              need={state.need}
+            />
+          )}
 
           <Timeline
             entries={state.timeline}
