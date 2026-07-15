@@ -1,4 +1,4 @@
-import type { Need, TaskResult } from '../api/types'
+import type { Need, TaskResultOut } from '../api/types'
 import type { TimelineEntry } from '../session/types'
 import OverseerCard from './OverseerCard'
 import WorkerCard from './WorkerCard'
@@ -6,31 +6,31 @@ import FinalResultCard from './FinalResultCard'
 
 interface TimelineProps {
   entries: TimelineEntry[]
-  finalResult: TaskResult | null
-  completedResult: TaskResult | null
+  pendingResult: TaskResultOut | null
+  completedResult: TaskResultOut | null
   need: Need | null
-  loading: boolean
+  busy: boolean
   onApprove: () => void
 }
 
 function Timeline({
   entries,
-  finalResult,
+  pendingResult,
   completedResult,
   need,
-  loading,
+  busy,
   onApprove,
 }: TimelineProps) {
   if (entries.length === 0) {
     return (
-      <p className="timeline-empty">
+      <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
         No calls yet — click get_next_step() to begin.
       </p>
     )
   }
 
   return (
-    <div className="timeline">
+    <div className="flex flex-col gap-3.5">
       {entries.map((entry, i) => {
         const n = i + 1
         if (entry.kind === 'overseer') {
@@ -60,11 +60,11 @@ function Timeline({
           />
         )
       })}
-      {finalResult && (
+      {pendingResult && (
         <FinalResultCard
-          result={finalResult}
+          result={pendingResult}
           need={need}
-          loading={loading}
+          busy={busy}
           completedResult={completedResult}
           onApprove={onApprove}
         />

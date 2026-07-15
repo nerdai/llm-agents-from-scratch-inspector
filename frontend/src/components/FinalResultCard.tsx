@@ -1,47 +1,52 @@
-import type { Need, TaskResult } from '../api/types'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import type { Need, TaskResultOut } from '../api/types'
 
 interface FinalResultCardProps {
-  result: TaskResult
+  result: TaskResultOut
   need: Need | null
-  loading: boolean
-  completedResult: TaskResult | null
+  busy: boolean
+  completedResult: TaskResultOut | null
   onApprove: () => void
 }
 
 function FinalResultCard({
   result,
   need,
-  loading,
+  busy,
   completedResult,
   onApprove,
 }: FinalResultCardProps) {
   const isDone = completedResult !== null
-  const canApprove = need === 'approve' && !loading && !isDone
+  const canApprove = need === 'approve' && !busy && !isDone
 
   return (
-    <article className="call-card call-final">
-      <header className="call-header">
-        <span className="role-pill role-final">TaskResult</span>
+    <Card className="border-l-2 border-l-primary">
+      <CardHeader className="flex-row items-center gap-2.5 border-b pb-3 text-xs">
+        <Badge>TaskResult</Badge>
         {isDone && (
-          <span className="status-pill status-resolved">resolved</span>
+          <Badge variant="outline" className="ml-auto text-primary">
+            resolved
+          </Badge>
         )}
-      </header>
-      <div className="call-body">
-        <p className="kv-value final-content">
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2.5">
+        <p className="text-[15px]">
           {isDone ? completedResult.content : result.content}
         </p>
         {!isDone && (
-          <button
+          <Button
             type="button"
-            className="btn btn-approve"
             disabled={!canApprove}
             onClick={onApprove}
+            className="self-start"
           >
-            {loading ? 'Completing…' : 'Approve'}
-          </button>
+            {busy ? 'Completing…' : 'Approve'}
+          </Button>
         )}
-      </div>
-    </article>
+      </CardContent>
+    </Card>
   )
 }
 

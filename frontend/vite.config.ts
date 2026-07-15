@@ -1,5 +1,7 @@
+import path from 'node:path'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 
 // `agent-inspector launch --dev` sets this to the backend's actual
 // `--port` when it spawns this dev server, so the proxy target always
@@ -9,7 +11,12 @@ const backendPort = process.env.AGENT_INSPECTOR_BACKEND_PORT ?? '8000'
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
   server: {
     // In `agent-inspector launch --dev`, the FastAPI backend fronts
     // the API while this dev server fronts the UI; proxying /api

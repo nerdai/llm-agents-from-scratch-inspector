@@ -1,15 +1,15 @@
-import type { RunStepResult, ToolCall } from '../api/types'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import type { TaskStepResultOut, ToolCallTraceOut } from '../api/types'
 
 interface WorkerCardProps {
   n: number
-  result: RunStepResult
-  toolCalls: ToolCall[]
+  result: TaskStepResultOut
+  toolCalls: ToolCallTraceOut[]
   stepCounter: number
 }
 
-function formatArgs(args: unknown): string {
-  if (args === null || args === undefined) return ''
-  if (typeof args === 'string') return args
+function formatArgs(args: Record<string, unknown>): string {
   try {
     return JSON.stringify(args)
   } catch {
@@ -17,44 +17,67 @@ function formatArgs(args: unknown): string {
   }
 }
 
+function formatContent(content: unknown): string {
+  if (typeof content === 'string') return content
+  try {
+    return JSON.stringify(content)
+  } catch {
+    return String(content)
+  }
+}
+
 function WorkerCard({ n, result, toolCalls, stepCounter }: WorkerCardProps) {
   return (
-    <article className="call-card call-worker">
-      <header className="call-header">
-        <span className="call-index">#{n}</span>
-        <span className="role-pill role-worker">worker</span>
-        <code className="call-op">run_step(step)</code>
-        <span className="step-counter">step {stepCounter}</span>
-      </header>
-      <div className="call-body">
+    <Card className="border-l-2 border-l-muted-foreground">
+      <CardHeader className="flex-row items-center gap-2.5 border-b pb-3 text-xs">
+        <span className="font-mono font-semibold text-muted-foreground">
+          #{n}
+        </span>
+        <Badge variant="secondary">worker</Badge>
+        <code className="font-mono text-foreground">run_step(step)</code>
+        <span className="ml-auto font-mono text-[11px] font-semibold text-muted-foreground">
+          step {stepCounter}
+        </span>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2.5">
         {toolCalls.length > 0 && (
-          <div className="tool-trace">
-            <span className="kv-label">tool calls</span>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[10.5px] font-semibold tracking-wide text-muted-foreground uppercase">
+              tool calls
+            </span>
             {toolCalls.map((tc, i) => (
               <div
-                className={`tool-call${tc.error ? ' tool-call-error' : ''}`}
+                className={
+                  tc.error
+                    ? 'rounded-md border border-destructive bg-muted px-2.5 py-2'
+                    : 'rounded-md border bg-muted px-2.5 py-2'
+                }
                 key={`${tc.tool_name}-${i}`}
               >
-                <code className="tool-call-sig">
+                <code className="block font-mono text-xs">
                   {tc.tool_name}({formatArgs(tc.args)})
                 </code>
                 {tc.error ? (
-                  <p className="tool-call-content tool-call-error-text">
-                    error: {tc.error}
+                  <p className="mt-1 text-sm text-destructive">
+                    error: {formatContent(tc.content)}
                   </p>
                 ) : (
-                  <p className="tool-call-content">{tc.content}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {formatContent(tc.content)}
+                  </p>
                 )}
               </div>
             ))}
           </div>
         )}
-        <div className="kv">
-          <span className="kv-label">result</span>
-          <p className="kv-value">{result.content}</p>
+        <div className="flex flex-col gap-1">
+          <span className="text-[10.5px] font-semibold tracking-wide text-muted-foreground uppercase">
+            result
+          </span>
+          <p className="text-sm">{result.content}</p>
         </div>
-      </div>
-    </article>
+      </CardContent>
+    </Card>
   )
 }
 

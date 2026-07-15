@@ -1,18 +1,12 @@
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import type { NextStepDecisionOut } from '../api/types'
+
 interface OverseerCardProps {
   n: number
   outcome: 'next_step' | 'final_result'
-  decision?: unknown
+  decision?: NextStepDecisionOut
   instruction?: string
-}
-
-function formatDecision(decision: unknown): string {
-  if (decision === null || decision === undefined) return ''
-  if (typeof decision === 'string') return decision
-  try {
-    return JSON.stringify(decision, null, 2)
-  } catch {
-    return String(decision)
-  }
 }
 
 function OverseerCard({
@@ -21,33 +15,40 @@ function OverseerCard({
   decision,
   instruction,
 }: OverseerCardProps) {
-  const decisionText = formatDecision(decision)
   return (
-    <article className="call-card call-overseer">
-      <header className="call-header">
-        <span className="call-index">#{n}</span>
-        <span className="role-pill role-overseer">overseer</span>
-        <code className="call-op">get_next_step()</code>
-      </header>
-      <div className="call-body">
-        {decisionText && (
-          <div className="kv">
-            <span className="kv-label">decision</span>
-            <pre className="kv-value">{decisionText}</pre>
+    <Card className="border-l-2 border-l-primary">
+      <CardHeader className="flex-row items-center gap-2.5 border-b pb-3 text-xs">
+        <span className="font-mono font-semibold text-muted-foreground">
+          #{n}
+        </span>
+        <Badge>overseer</Badge>
+        <code className="font-mono text-foreground">get_next_step()</code>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2.5">
+        {decision?.content && (
+          <div className="flex flex-col gap-1">
+            <span className="text-[10.5px] font-semibold tracking-wide text-muted-foreground uppercase">
+              decision
+            </span>
+            <pre className="rounded-md bg-muted p-2 font-mono text-xs whitespace-pre-wrap">
+              {decision.content}
+            </pre>
           </div>
         )}
         {outcome === 'next_step' ? (
-          <div className="kv">
-            <span className="kv-label">next step</span>
-            <p className="kv-value instruction">{instruction}</p>
+          <div className="flex flex-col gap-1">
+            <span className="text-[10.5px] font-semibold tracking-wide text-muted-foreground uppercase">
+              next step
+            </span>
+            <p className="text-sm font-medium">{instruction}</p>
           </div>
         ) : (
-          <p className="final-flag">
+          <p className="text-sm text-primary">
             kind = final_result — task objective reached
           </p>
         )}
-      </div>
-    </article>
+      </CardContent>
+    </Card>
   )
 }
 

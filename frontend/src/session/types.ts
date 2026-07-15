@@ -1,11 +1,17 @@
+import type { ApiError } from '../api/client'
 import type {
+  NextStepDecisionOut,
   Need,
-  RunStepResult,
-  TaskInfo,
-  TaskResult,
-  TaskStep,
-  ToolCall,
+  SkillOut,
+  TaskOut,
+  TaskResultOut,
+  TaskStepOut,
+  TaskStepResultOut,
+  ToolCallTraceOut,
 } from '../api/types'
+
+/** A normalized, serializable view of a failed request (see `ApiError`). */
+export type ApiErrorInfo = Pick<ApiError, 'status' | 'detail'>
 
 /** One rendered card in the timeline -- either an overseer call
  * (`get_next_step`) or a worker call (`run_step`). */
@@ -14,34 +20,39 @@ export type TimelineEntry =
       kind: 'overseer'
       id: string
       outcome: 'next_step'
-      decision: unknown
-      step: TaskStep
+      decision: NextStepDecisionOut
+      step: TaskStepOut
     }
   | {
       kind: 'overseer'
       id: string
       outcome: 'final_result'
-      result: TaskResult
+      result: TaskResultOut
     }
   | {
       kind: 'worker'
       id: string
-      result: RunStepResult
-      toolCalls: ToolCall[]
+      result: TaskStepResultOut
+      toolCalls: ToolCallTraceOut[]
       stepCounter: number
     }
 
 export interface SessionState {
   sessionId: string | null
-  task: TaskInfo | null
+  task: TaskOut | null
   tools: string[]
-  skills: string[]
+  skills: SkillOut[]
+  /** The session lifecycle's server-authoritative state, or `null`
+   * before a session exists. */
   need: Need | null
+  /** Whether a mutation is currently in flight. */
+  busy: boolean
   timeline: TimelineEntry[]
-  finalResult: TaskResult | null
-  completedResult: TaskResult | null
-  loading: boolean
-  error: string | null
+  /** The task's final result, awaiting approval (`need === "approve"`). */
+  pendingResult: TaskResultOut | null
+  /** The task's final result, once approved (`need === "done"`). */
+  completedResult: TaskResultOut | null
+  error: ApiErrorInfo | null
 }
 
 export const initialSessionState: SessionState = {
@@ -50,9 +61,9 @@ export const initialSessionState: SessionState = {
   tools: [],
   skills: [],
   need: null,
+  busy: false,
   timeline: [],
-  finalResult: null,
+  pendingResult: null,
   completedResult: null,
-  loading: false,
   error: null,
 }
