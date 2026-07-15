@@ -32,7 +32,7 @@ A `Session` (`services/session.py`) is the in-memory record of one
 supervised run: the live `LLMAgent` and `SupervisedTaskHandler`, plus
 whatever state the run needs to pause between HTTP calls. `SessionService`
 owns every live session in a single in-memory `dict[str, Session]` — see
-[ADR-001](../.claude/docs/adr/ADR-001-in-memory-single-process-session-store.md)
+[ADR-001](adr/ADR-001-in-memory-single-process-session-store.md)
 for why, and the resulting single-worker-process constraint.
 
 Because the framework's `SupervisedTaskHandler` is caller-driven (you call
@@ -103,7 +103,7 @@ in a diagram doesn't, on its own):
 
 `POST /api/sessions` no longer builds an `LLMAgent` from HTTP config
 (`model`/`think`/`function_tools`/...) — see
-[ADR-002](../.claude/docs/adr/ADR-002-convention-based-entrypoint-discovery.md)
+[ADR-002](adr/ADR-002-convention-based-entrypoint-discovery.md)
 for the full rationale. Instead:
 
 1. The user writes a Python script (e.g. `main.py`) that constructs an
