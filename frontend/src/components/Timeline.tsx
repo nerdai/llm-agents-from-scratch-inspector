@@ -26,11 +26,15 @@ function Timeline({
   onEditStep,
   onEditResult,
 }: TimelineProps) {
-  // The empty state only applies when nothing has happened *and*
-  // nothing is in flight -- otherwise the very first get_next_step()
-  // call would flash "no calls yet" instead of the pending-operation
-  // indicator below.
-  if (entries.length === 0 && !busy) {
+  // The empty state only applies when nothing has happened, nothing
+  // is in flight (#22 -- otherwise the very first get_next_step() call
+  // would flash "no calls yet" instead of the pending-operation
+  // indicator below), and there's no pending result to show (#24 --
+  // `pendingResult` can be non-null with empty `entries` right after a
+  // rehydrated reload: the backend's `final_result` exists, but the
+  // structured `TimelineEntry` cards that produced it don't -- see
+  // `RehydratedSessionView`).
+  if (entries.length === 0 && !busy && !pendingResult) {
     return (
       <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
         No calls yet — click get_next_step() to begin.

@@ -3,6 +3,7 @@ import ConfigRail from './components/ConfigRail'
 import Controls from './components/Controls'
 import Timeline from './components/Timeline'
 import ErrorBanner from './components/ErrorBanner'
+import RehydratedSessionView from './components/RehydratedSessionView'
 import { useSession } from './session/useSession'
 
 /**
@@ -12,15 +13,17 @@ import { useSession } from './session/useSession'
  * one `SupervisedTaskHandler` call at a time.
  *
  * `AppShell` owns only the chrome (app bar + rail + scrollable main
- * slot); `ConfigRail` owns the rail's contents. The `<main>` slot
- * below still renders this project's pre-#21 `Controls`/`Timeline` --
- * #22 (timeline/operation-card redesign), #23 (drawers, approval
- * gate, error toasts), and #24 (reload rehydration) build on top of
- * that slot's contents, not this file's top-level structure.
+ * slot); `ConfigRail` owns the rail's contents, including `TaskForm`
+ * pre-session. The `<main>` slot below renders `Controls`/`Timeline`
+ * (#22's redesign) once a session exists, reload rehydration via
+ * `RehydratedSessionView` (#24) when one was restored from
+ * `?session=<id>`, and #23's drawers/approval gate/error toasts build
+ * on top of this too.
  */
 function App() {
   const {
     state,
+    rehydrating,
     start,
     getNextStep,
     runNextStep,
@@ -30,13 +33,21 @@ function App() {
     reset,
   } = useSession()
 
+  const hasSession = state.sessionId !== null
+
   return (
     <AppShell
       rail={<ConfigRail state={state} onCreate={start} onReset={reset} />}
     >
       {state.error && <ErrorBanner error={state.error} />}
 
-      {state.sessionId !== null && (
+      {!hasSession && rehydrating && (
+        <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+          Restoring session…
+        </p>
+      )}
+
+      {hasSession && (
         <>
           <Controls
             need={state.need}
@@ -44,6 +55,16 @@ function App() {
             onGetNextStep={getNextStep}
             onRunStep={runNextStep}
           />
+
+          {state.rehydrated && (
+            <RehydratedSessionView
+              rollout={state.rollout ?? ''}
+              toolCallHistory={state.toolCallHistory}
+              stepCounter={state.stepCounter}
+              config={state.config}
+              need={state.need}
+            />
+          )}
 
           <Timeline
             entries={state.timeline}
