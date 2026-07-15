@@ -30,7 +30,10 @@ function SectionLabel({ children }: { children: ReactNode }) {
  */
 function ConfigRail({ state, onCreate, onReset }: ConfigRailProps) {
   const hasSession = state.sessionId !== null
-  const isDone = state.completedResult !== null
+  // `need === 'done'` is reached via either approval (`completedResult`
+  // set) or abort (`completedResult` stays null) -- "Start new
+  // session" should show either way, not just after approval.
+  const isDone = state.need === 'done'
 
   if (!hasSession) {
     return (

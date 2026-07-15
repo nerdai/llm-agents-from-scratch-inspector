@@ -15,16 +15,19 @@ import { useSession } from './session/useSession'
  * discovered tools/skills) alongside a main content area that drives
  * one `SupervisedTaskHandler` call at a time.
  *
- * `AppShell` owns only the chrome (app bar + rail + scrollable main
- * slot); `ConfigRail` owns the rail's contents, including `TaskForm`
- * pre-session. The `<main>` slot below renders `Controls`/`Timeline`
- * (#22's redesign, including the approve/reject gate and inline
- * editing) once a session exists, and reload rehydration via
+ * `AppShell` owns only the chrome (app bar + rail + pinned main header
+ * + scrollable main slot); `ConfigRail` owns the rail's contents,
+ * including `TaskForm` pre-session. `Controls` (get_next_step()/
+ * run_step()/abort) is pinned via `AppShell`'s `mainHeader` slot, so
+ * it stays reachable without scrolling back up through a long
+ * `Timeline` (#22's redesign, including the approve/reject gate and
+ * inline editing) -- which, along with reload rehydration via
  * `RehydratedSessionView` (#24) when one was restored from
- * `?session=<id>`. #23's `TemplatesDrawer` trigger lives in the app
- * bar itself (`AppShell`'s `headerActions` slot) since it needs to be
- * usable before any session exists; its Sonner `<Toaster />` replaces
- * the old inline error banner.
+ * `?session=<id>`, renders in the scrollable `children` slot. #23's
+ * `TemplatesDrawer` trigger lives in the app bar itself (`AppShell`'s
+ * `headerActions` slot) since it needs to be usable before any
+ * session exists; its Sonner `<Toaster />` replaces the old inline
+ * error banner.
  */
 function App() {
   const {
@@ -37,6 +40,7 @@ function App() {
     reject,
     editStep,
     editResult,
+    abort,
     reset,
   } = useSession()
 
@@ -58,6 +62,19 @@ function App() {
     <AppShell
       rail={<ConfigRail state={state} onCreate={start} onReset={reset} />}
       headerActions={<TemplatesDrawer />}
+      mainHeader={
+        hasSession && (
+          <Controls
+            need={state.need}
+            busy={state.busy}
+            sessionId={state.sessionId}
+            isCompleted={state.completedResult !== null}
+            onGetNextStep={getNextStep}
+            onRunStep={runNextStep}
+            onAbort={abort}
+          />
+        )
+      }
     >
       <Toaster />
 
@@ -69,14 +86,6 @@ function App() {
 
       {hasSession && (
         <>
-          <Controls
-            need={state.need}
-            busy={state.busy}
-            sessionId={state.sessionId}
-            onGetNextStep={getNextStep}
-            onRunStep={runNextStep}
-          />
-
           {state.rehydrated && (
             <RehydratedSessionView
               rollout={state.rollout ?? ''}
