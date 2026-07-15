@@ -158,8 +158,7 @@ function TaskForm({ onCreate, disabled }: TaskFormProps) {
         </div>
         <span className="text-[11px] text-muted-foreground">
           Skill names, by name -- press Enter or comma to add. Hidden from the
-          model&apos;s catalog but loadable via{' '}
-          <code className="font-mono">run_with_skill()</code>.
+          model&apos;s visible catalog, but still invokable by name.
         </span>
       </label>
 
