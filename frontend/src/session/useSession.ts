@@ -38,7 +38,14 @@ function toErrorInfo(err: unknown): ApiErrorInfo {
 const SESSION_QUERY_PARAM = 'session'
 
 function readSessionIdFromUrl(): string | null {
-  return new URLSearchParams(window.location.search).get(SESSION_QUERY_PARAM)
+  const raw = new URLSearchParams(window.location.search).get(
+    SESSION_QUERY_PARAM,
+  )
+  // `?session=` with no value (or whitespace) parses to `""`, not
+  // `null` -- normalize that to `null` too, so an empty/blank param
+  // doesn't drive `useSessionState` with an empty id.
+  const trimmed = raw?.trim()
+  return trimmed ? trimmed : null
 }
 
 function writeSessionIdToUrl(sessionId: string | null): void {
@@ -93,9 +100,9 @@ export function useSession() {
   const hasRehydratedRef = useRef(false)
   // Nothing left to rehydrate -- either there was no `?session=` param
   // to begin with, or the one attempt above has already resolved
-  // (success or failure). Gates the URL-sync effect below so it can't
-  // stomp a still-in-flight `?session=` param with the reducer's
-  // not-yet-updated `null` `sessionId`.
+  // (success or failure). Only drives the `rehydrating` flag returned
+  // below now -- see `rehydrationStillPending` for why the URL-sync
+  // effect needs a stricter, differently-timed check than this one.
   const rehydrationSettled =
     rehydrateSessionId === null ||
     rehydrateQuery.isSuccess ||
@@ -115,14 +122,33 @@ export function useSession() {
     }
   }, [rehydrateQuery.isSuccess, rehydrateQuery.isError, rehydrateQuery.data])
 
+  // A rehydration attempt for a real `?session=` id is still
+  // outstanding: `rehydrateQuery.isSuccess` can flip true a whole
+  // render before the *other* effect's dispatch actually lands in
+  // `state.sessionId` (dispatch is scheduled from an effect, not
+  // applied synchronously within the same render) -- so during that
+  // one-render gap, `state.sessionId` is still `null` even though
+  // rehydration has, from the query's point of view, already
+  // succeeded. Naively syncing on every `state.sessionId` change
+  // would briefly clear `?session=` on that gap render, then rewrite
+  // it back on the next one -- a visible flicker. This only treats
+  // rehydration as "not yet resolved" (and skips the write) up to and
+  // not including the point where it's failed outright, so a genuine
+  // 404/error still clears the stale param below.
+  const rehydrationStillPending =
+    rehydrateSessionId !== null &&
+    state.sessionId === null &&
+    !rehydrateQuery.isError
+
   // Keeps the URL's `?session=` param in sync with the live session id
   // -- written whenever a session is created or rehydrated, cleared on
-  // reset/abort-to-nothing -- so copying the URL, refreshing, or using
-  // the browser's own back/forward lands back in the same session.
+  // reset/abort-to-nothing or a failed rehydration -- so copying the
+  // URL, refreshing, or using the browser's own back/forward lands
+  // back in the same session.
   useEffect(() => {
-    if (!rehydrationSettled) return
+    if (rehydrationStillPending) return
     writeSessionIdToUrl(state.sessionId)
-  }, [state.sessionId, rehydrationSettled])
+  }, [state.sessionId, rehydrationStillPending])
 
   const start = useCallback(
     async (body: CreateSessionRequest) => {
