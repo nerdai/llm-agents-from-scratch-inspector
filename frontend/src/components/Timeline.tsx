@@ -3,6 +3,7 @@ import type { TimelineEntry } from '../session/types'
 import OverseerCard from './OverseerCard'
 import WorkerCard from './WorkerCard'
 import FinalResultCard from './FinalResultCard'
+import PendingOperationCard from './PendingOperationCard'
 
 interface TimelineProps {
   entries: TimelineEntry[]
@@ -11,6 +12,8 @@ interface TimelineProps {
   need: Need | null
   busy: boolean
   onApprove: () => void
+  onEditStep: (instruction: string) => void
+  onEditResult: (content: string) => void
 }
 
 function Timeline({
@@ -20,13 +23,18 @@ function Timeline({
   need,
   busy,
   onApprove,
+  onEditStep,
+  onEditResult,
 }: TimelineProps) {
-  // `pendingResult` can be non-null with an empty `entries` right after
-  // a rehydrated reload (#24) -- the backend's `final_result` exists,
-  // but the structured `TimelineEntry` cards that produced it don't
-  // (see `RehydratedSessionView`). Only take the empty-state early
-  // return when there's truly nothing to show.
-  if (entries.length === 0 && !pendingResult) {
+  // The empty state only applies when nothing has happened, nothing
+  // is in flight (#22 -- otherwise the very first get_next_step() call
+  // would flash "no calls yet" instead of the pending-operation
+  // indicator below), and there's no pending result to show (#24 --
+  // `pendingResult` can be non-null with empty `entries` right after a
+  // rehydrated reload: the backend's `final_result` exists, but the
+  // structured `TimelineEntry` cards that produced it don't -- see
+  // `RehydratedSessionView`).
+  if (entries.length === 0 && !busy && !pendingResult) {
     return (
       <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
         No calls yet — click get_next_step() to begin.
@@ -34,11 +42,20 @@ function Timeline({
     )
   }
 
+  const lastIndex = entries.length - 1
+
   return (
     <div className="flex flex-col gap-3.5">
       {entries.map((entry, i) => {
         const n = i + 1
+        const isLast = i === lastIndex
         if (entry.kind === 'overseer') {
+          // Only the single most-recent `next_step` entry is
+          // editable, and only while the backend is still sitting on
+          // that pending `TaskStep` (need === 'run') -- matches the
+          // PATCH endpoint's own constraint (session.pending_step).
+          const editable =
+            isLast && entry.outcome === 'next_step' && need === 'run' && !busy
           return (
             <OverseerCard
               key={entry.id}
@@ -47,14 +64,15 @@ function Timeline({
               decision={
                 entry.outcome === 'next_step' ? entry.decision : undefined
               }
-              instruction={
-                entry.outcome === 'next_step'
-                  ? entry.step.instruction
-                  : undefined
-              }
+              step={entry.outcome === 'next_step' ? entry.step : undefined}
+              editable={editable}
+              busy={busy}
+              onSaveInstruction={onEditStep}
             />
           )
         }
+        // Same rule for the last `TaskStepResult` (need === 'next').
+        const editable = isLast && need === 'next' && !busy
         return (
           <WorkerCard
             key={entry.id}
@@ -62,9 +80,18 @@ function Timeline({
             result={entry.result}
             toolCalls={entry.toolCalls}
             stepCounter={entry.stepCounter}
+            editable={editable}
+            busy={busy}
+            onSaveResult={onEditResult}
           />
         )
       })}
+      {busy && !pendingResult && (need === 'next' || need === 'run') && (
+        <PendingOperationCard
+          role={need === 'next' ? 'overseer' : 'worker'}
+          signature={need === 'next' ? 'get_next_step()' : 'run_step(step)'}
+        />
+      )}
       {pendingResult && (
         <FinalResultCard
           result={pendingResult}
