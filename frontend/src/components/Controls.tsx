@@ -1,10 +1,12 @@
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import type { Need } from '../api/types'
+import RolloutDrawer from './RolloutDrawer'
 
 interface ControlsProps {
   need: Need | null
   busy: boolean
+  sessionId: string | null
   onGetNextStep: () => void
   onRunStep: () => void
 }
@@ -16,7 +18,13 @@ const PHASE_LABEL: Record<Need, string> = {
   done: 'Task complete',
 }
 
-function Controls({ need, busy, onGetNextStep, onRunStep }: ControlsProps) {
+function Controls({
+  need,
+  busy,
+  sessionId,
+  onGetNextStep,
+  onRunStep,
+}: ControlsProps) {
   const canNext = need === 'next' && !busy
   const canRun = need === 'run' && !busy
 
@@ -42,6 +50,7 @@ function Controls({ need, busy, onGetNextStep, onRunStep }: ControlsProps) {
           run_step(step)
         </Button>
       </div>
+      <RolloutDrawer sessionId={sessionId} />
       <Badge variant="outline" className="font-mono">
         {busy ? 'Calling backend…' : need ? PHASE_LABEL[need] : ''}
       </Badge>

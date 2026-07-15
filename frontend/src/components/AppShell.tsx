@@ -5,6 +5,11 @@ interface AppShellProps {
   /** The config rail's contents (#21 -- `ConfigRail`). Rendered inside
    * a fixed-width, independently-scrollable `<aside>`. */
   rail: ReactNode
+  /** Optional extra app-bar controls, rendered before the Ollama
+   * status chip -- e.g. #23's `TemplatesDrawer` trigger, which needs
+   * to be visible/usable before any session exists (so it can't live
+   * in the rail or `<main>`, both of which are session-scoped). */
+  headerActions?: ReactNode
   /** The main content area -- today this is `App.tsx`'s
    * error banner + `Controls` + `Timeline`, but #22-#24 own what
    * actually renders here; this component only owns the surrounding
@@ -24,7 +29,7 @@ interface AppShellProps {
  * toasts), and #24 (reload rehydration) can build inside the `<main>`
  * slot without needing to also restructure this shell.
  */
-function AppShell({ rail, children }: AppShellProps) {
+function AppShell({ rail, headerActions, children }: AppShellProps) {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
       <header className="flex h-14 flex-none items-center gap-3.5 border-b bg-card px-5">
@@ -40,6 +45,7 @@ function AppShell({ rail, children }: AppShellProps) {
           SupervisedTaskHandler
         </span>
         <div className="flex-1" />
+        {headerActions}
         <OllamaStatusChip />
       </header>
 
