@@ -1,8 +1,10 @@
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import type { Need } from '../api/types'
 
 interface ControlsProps {
   need: Need | null
-  loading: boolean
+  busy: boolean
   onGetNextStep: () => void
   onRunStep: () => void
 }
@@ -14,33 +16,35 @@ const PHASE_LABEL: Record<Need, string> = {
   done: 'Task complete',
 }
 
-function Controls({ need, loading, onGetNextStep, onRunStep }: ControlsProps) {
-  const canNext = need === 'next' && !loading
-  const canRun = need === 'run' && !loading
+function Controls({ need, busy, onGetNextStep, onRunStep }: ControlsProps) {
+  const canNext = need === 'next' && !busy
+  const canRun = need === 'run' && !busy
 
   return (
-    <div className="controls">
-      <div className="controls-buttons">
-        <button
+    <div className="flex flex-wrap items-center gap-3.5">
+      <div className="flex gap-2.5">
+        <Button
           type="button"
-          className="btn btn-overseer"
+          variant="secondary"
           disabled={!canNext}
           onClick={onGetNextStep}
+          className="font-mono"
         >
           get_next_step()
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className="btn btn-worker"
+          variant="secondary"
           disabled={!canRun}
           onClick={onRunStep}
+          className="font-mono"
         >
           run_step(step)
-        </button>
+        </Button>
       </div>
-      <span className={`phase-pill phase-${need ?? 'next'}`}>
-        {loading ? 'Calling backend…' : need ? PHASE_LABEL[need] : ''}
-      </span>
+      <Badge variant="outline" className="font-mono">
+        {busy ? 'Calling backend…' : need ? PHASE_LABEL[need] : ''}
+      </Badge>
     </div>
   )
 }
