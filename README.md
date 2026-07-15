@@ -24,8 +24,7 @@ UI instead of the notebook's own manual loop.
    ollama pull qwen3:14b        # in another
    ```
 
-2. From this repo's root (so the `stop-at-one` skill under
-   `.agents/skills/` is discovered -- see `demo.py`'s docstring):
+2. From this repo's root:
 
    ```bash
    uv sync

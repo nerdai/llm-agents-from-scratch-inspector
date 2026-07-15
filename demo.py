@@ -17,10 +17,14 @@ Requires a running Ollama daemon (`ollama serve`) with the
 `qwen3:14b` model pulled (`ollama pull qwen3:14b`) -- or edit the
 `OllamaLLM(...)` call below to point at a model you already have.
 
-The `stop-at-one` skill this script's directory ships in
-`.agents/skills/stop-at-one/` (same skill Example 3 uses) is
-auto-discovered from the current working directory -- run the command
-above from this repo's root so it's found.
+Deliberately doesn't wire up the notebook's `stop-at-one` skill (its
+own `run_supervised(..., explicit_only_skills=["stop-at-one"])` call
+hides the skill from the model's visible catalog -- something only
+settable per-request, not from an `agent_builder` script, per ADR-002)
+-- a discoverable-but-visible skill measurably destabilizes smaller/
+quantized models like `qwen3:14b` here (extra tool-catalog complexity
+gives it more surface to stumble on), so this Quickstart stays with
+just the one tool for a reliably smooth first run.
 """
 
 from llm_agents_from_scratch import LLMAgentBuilder
