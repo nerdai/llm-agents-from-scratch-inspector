@@ -11,6 +11,7 @@ interface TimelineProps {
   need: Need | null
   busy: boolean
   onApprove: () => void
+  onReject: (feedback: string) => void
 }
 
 function Timeline({
@@ -20,6 +21,7 @@ function Timeline({
   need,
   busy,
   onApprove,
+  onReject,
 }: TimelineProps) {
   if (entries.length === 0) {
     return (
@@ -67,6 +69,7 @@ function Timeline({
           busy={busy}
           completedResult={completedResult}
           onApprove={onApprove}
+          onReject={onReject}
         />
       )}
     </div>
