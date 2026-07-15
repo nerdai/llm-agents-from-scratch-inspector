@@ -102,19 +102,33 @@ function TaskForm({ onCreate, disabled }: TaskFormProps) {
           Skills scope
         </span>
         <div className="flex gap-1.5">
-          {SCOPE_OPTIONS.map((scope) => (
-            <Button
-              key={scope}
-              type="button"
-              size="sm"
-              variant={scopes.includes(scope) ? 'default' : 'outline'}
-              disabled={disabled}
-              onClick={() => toggleScope(scope)}
-              aria-pressed={scopes.includes(scope)}
-            >
-              {scope}
-            </Button>
-          ))}
+          {SCOPE_OPTIONS.map((scope) => {
+            const active = scopes.includes(scope)
+            return (
+              <button
+                key={scope}
+                type="button"
+                disabled={disabled}
+                onClick={() => toggleScope(scope)}
+                aria-pressed={active}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 font-mono text-[11px] font-semibold tracking-wide uppercase transition-colors',
+                  active
+                    ? 'border-primary/45 bg-primary/10 text-primary'
+                    : 'border-border bg-transparent text-muted-foreground hover:border-foreground/20',
+                  disabled && 'pointer-events-none opacity-50',
+                )}
+              >
+                <span
+                  className={cn(
+                    'size-1.5 rounded-full',
+                    active ? 'bg-primary' : 'bg-muted-foreground/40',
+                  )}
+                />
+                {scope}
+              </button>
+            )
+          })}
         </div>
         <span className="text-[11px] text-muted-foreground">
           Optional -- omit to use the agent&apos;s default discovery scopes.
