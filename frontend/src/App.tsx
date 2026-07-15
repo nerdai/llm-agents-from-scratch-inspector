@@ -6,6 +6,7 @@ import ConfigRail from './components/ConfigRail'
 import Controls from './components/Controls'
 import Timeline from './components/Timeline'
 import TemplatesDrawer from './components/TemplatesDrawer'
+import RehydratedSessionView from './components/RehydratedSessionView'
 import { useSession } from './session/useSession'
 
 /**
@@ -15,15 +16,20 @@ import { useSession } from './session/useSession'
  * one `SupervisedTaskHandler` call at a time.
  *
  * `AppShell` owns only the chrome (app bar + rail + scrollable main
- * slot); `ConfigRail` owns the rail's contents. The `<main>` slot
- * below renders `Controls`/`Timeline` (#22's redesign, including the
- * approve/reject gate and inline editing) and #23's `TemplatesDrawer`
- * trigger lives in the app bar itself (`AppShell`'s `headerActions`
- * slot) since it needs to be usable before any session exists.
+ * slot); `ConfigRail` owns the rail's contents, including `TaskForm`
+ * pre-session. The `<main>` slot below renders `Controls`/`Timeline`
+ * (#22's redesign, including the approve/reject gate and inline
+ * editing) once a session exists, and reload rehydration via
+ * `RehydratedSessionView` (#24) when one was restored from
+ * `?session=<id>`. #23's `TemplatesDrawer` trigger lives in the app
+ * bar itself (`AppShell`'s `headerActions` slot) since it needs to be
+ * usable before any session exists; its Sonner `<Toaster />` replaces
+ * the old inline error banner.
  */
 function App() {
   const {
     state,
+    rehydrating,
     start,
     getNextStep,
     runNextStep,
@@ -33,6 +39,8 @@ function App() {
     editResult,
     reset,
   } = useSession()
+
+  const hasSession = state.sessionId !== null
 
   // Surfaces every failed mutation as a toast (#23) -- `state.error` is
   // a fresh object each time `busy/error` fires (see `useSession`'s
@@ -53,7 +61,13 @@ function App() {
     >
       <Toaster />
 
-      {state.sessionId !== null && (
+      {!hasSession && rehydrating && (
+        <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+          Restoring session…
+        </p>
+      )}
+
+      {hasSession && (
         <>
           <Controls
             need={state.need}
@@ -62,6 +76,16 @@ function App() {
             onGetNextStep={getNextStep}
             onRunStep={runNextStep}
           />
+
+          {state.rehydrated && (
+            <RehydratedSessionView
+              rollout={state.rollout ?? ''}
+              toolCallHistory={state.toolCallHistory}
+              stepCounter={state.stepCounter}
+              config={state.config}
+              need={state.need}
+            />
+          )}
 
           <Timeline
             entries={state.timeline}
