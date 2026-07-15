@@ -1,4 +1,4 @@
-import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -14,7 +14,10 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      // `__dirname` is undefined here: this file loads as ESM (Vite 8
+      // + `package.json`'s `"type": "module"`), so the alias target
+      // is resolved from `import.meta.url` instead.
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
   server: {

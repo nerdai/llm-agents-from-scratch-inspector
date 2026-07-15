@@ -54,6 +54,7 @@ function nextEntryId(
  * sync with each other (or with each other's copy of the state
  * machine) -- worth a loud warning, not worth crashing the UI over. */
 function warnOnIllegalTransition(from: Need | null, to: Need): void {
+  if (!import.meta.env.DEV) return
   if (from === null || from === to) return
   const allowed = NEED_TRANSITIONS[from]
   if (!allowed.includes(to)) {
