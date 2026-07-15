@@ -19,8 +19,16 @@ import { useSession } from './session/useSession'
  * that slot's contents, not this file's top-level structure.
  */
 function App() {
-  const { state, start, getNextStep, runNextStep, approve, reset } =
-    useSession()
+  const {
+    state,
+    start,
+    getNextStep,
+    runNextStep,
+    approve,
+    editStep,
+    editResult,
+    reset,
+  } = useSession()
 
   return (
     <AppShell
@@ -44,6 +52,8 @@ function App() {
             need={state.need}
             busy={state.busy}
             onApprove={approve}
+            onEditStep={editStep}
+            onEditResult={editResult}
           />
         </>
       )}
