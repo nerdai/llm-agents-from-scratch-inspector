@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import { Pencil } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -40,18 +40,31 @@ function EditableField({
 }: EditableFieldProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [draft, setDraft] = useState(value)
-  const [edited, setEdited] = useState(false)
-  const originalValueRef = useRef(value)
+  // A one-time-initialized value read during render, not a ref (this
+  // lint config's `react-hooks/refs` rule disallows reading
+  // `ref.current` during render -- refs are an effects/event-handler
+  // escape hatch, not a rendering input).
+  const [originalValue] = useState(value)
 
-  useEffect(() => {
-    if (value !== originalValueRef.current) setEdited(true)
-  }, [value])
+  // Derived, not one-way-latched state: a save that reverts `value`
+  // back to what it started as un-marks `edited` again, rather than
+  // sticking once true.
+  const edited = value !== originalValue
 
-  // If this field stops being the editable one mid-edit (e.g. a new
-  // operation started elsewhere while the textarea was left open),
-  // fall back to read mode -- derived at render time, rather than an
-  // effect that would fire a second, cascading render just to unwind
-  // `isEditing`.
+  // If this field stops being the editable one (e.g. a new operation
+  // started elsewhere while the textarea was left open), fall back to
+  // read mode -- and make that sticky, not just the rendered output,
+  // so a later `editable: true` on a *different* operation can't
+  // silently reopen this field's editor. React's documented pattern
+  // for resetting state in response to a prop change during render
+  // (not an effect, which would cause an extra cascading render):
+  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes
+  const [prevEditable, setPrevEditable] = useState(editable)
+  if (editable !== prevEditable) {
+    setPrevEditable(editable)
+    if (!editable) setIsEditing(false)
+  }
+
   const showEditor = isEditing && editable
 
   function handleToggle() {
