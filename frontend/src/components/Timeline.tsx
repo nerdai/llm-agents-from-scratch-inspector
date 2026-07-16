@@ -13,6 +13,7 @@ import OverseerCard from './OverseerCard'
 import WorkerCard from './WorkerCard'
 import FinalResultCard from './FinalResultCard'
 import PendingOperationCard from './PendingOperationCard'
+import StepActionButtons from './StepActionButtons'
 
 interface TimelineProps {
   entries: TimelineEntry[]
@@ -24,6 +25,8 @@ interface TimelineProps {
   onReject: (feedback: string) => void
   onEditStep: (instruction: string) => void
   onEditResult: (content: string) => void
+  onGetNextStep: () => void
+  onRunStep: () => void
 }
 
 /** A short, one-line preview of a step's instruction, shown on its
@@ -46,6 +49,8 @@ function Timeline({
   onReject,
   onEditStep,
   onEditResult,
+  onGetNextStep,
+  onRunStep,
 }: TimelineProps) {
   // The empty state only applies when nothing has happened, nothing
   // is in flight (#22 -- otherwise the very first get_next_step() call
@@ -54,12 +59,31 @@ function Timeline({
   // `pendingResult` can be non-null with empty `entries` right after a
   // rehydrated reload: the backend's `final_result` exists, but the
   // structured `TimelineEntry` cards that produced it don't -- see
-  // `RehydratedSessionView`).
+  // `RehydratedSessionView`). It still needs the action buttons, though
+  // -- with no step-pairs yet, there's nothing for `TimelineSteps` to
+  // hang them on, but a fresh session (need === 'next') or a rehydrated
+  // one sitting on `need === 'run'` still needs a way to take the very
+  // first in-tab action.
   if (entries.length === 0 && !busy && !pendingResult) {
+    const showActions = need === 'next' || need === 'run'
     return (
-      <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-        No calls yet — click get_next_step() to begin.
-      </p>
+      <div className="flex items-start gap-3">
+        {showActions && (
+          <div className="sticky top-3 w-36 flex-none">
+            <StepActionButtons
+              need={need}
+              busy={busy}
+              onGetNextStep={onGetNextStep}
+              onRunStep={onRunStep}
+            />
+          </div>
+        )}
+        <p className="min-w-0 flex-1 rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+          {need === 'run'
+            ? 'Waiting on run_step(step) for the pending step.'
+            : 'No calls yet — click get_next_step() to begin.'}
+        </p>
+      </div>
     )
   }
 
@@ -87,6 +111,8 @@ function Timeline({
       busy={busy}
       onEditStep={onEditStep}
       onEditResult={onEditResult}
+      onGetNextStep={onGetNextStep}
+      onRunStep={onRunStep}
     >
       {busy && !pendingResult && (need === 'next' || need === 'run') && (
         <PendingOperationCard
@@ -115,6 +141,8 @@ interface TimelineStepsProps {
   busy: boolean
   onEditStep: (instruction: string) => void
   onEditResult: (content: string) => void
+  onGetNextStep: () => void
+  onRunStep: () => void
   children?: ReactNode
 }
 
@@ -136,6 +164,8 @@ function TimelineSteps({
   busy,
   onEditStep,
   onEditResult,
+  onGetNextStep,
+  onRunStep,
   children,
 }: TimelineStepsProps) {
   const [openSteps, setOpenSteps] = useState<Set<number>>(() => new Set([0]))
@@ -173,12 +203,9 @@ function TimelineSteps({
         const stepNumber = pairIndex + 1
         const open = openSteps.has(pairIndex)
         const preview = !open ? stepPreview(pair) : null
-        return (
-          <Collapsible
-            key={pair[0].id}
-            open={open}
-            onOpenChange={() => toggleStep(pairIndex)}
-          >
+
+        const step = (
+          <Collapsible open={open} onOpenChange={() => toggleStep(pairIndex)}>
             <CollapsibleTrigger className="group/step flex w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-left hover:bg-muted/50">
               <ChevronRight
                 className={cn(
@@ -248,6 +275,31 @@ function TimelineSteps({
               </div>
             </CollapsibleContent>
           </Collapsible>
+        )
+
+        // The get_next_step()/run_step() pair lives beside whichever
+        // step is current, not pinned in a toolbar -- "current" means
+        // the newest step-pair while it's still the one being actively
+        // driven (need is 'next' or 'run'). Once approval/completion
+        // takes over (need is 'approve'/'done'), FinalResultCard is the
+        // actionable element and no button column is shown here.
+        const isCurrentStep = pairIndex === stepPairs.length - 1
+        const showActions = isCurrentStep && (need === 'next' || need === 'run')
+        if (!showActions) {
+          return <div key={pair[0].id}>{step}</div>
+        }
+        return (
+          <div key={pair[0].id} className="flex items-start gap-3">
+            <div className="sticky top-3 w-36 flex-none">
+              <StepActionButtons
+                need={need}
+                busy={busy}
+                onGetNextStep={onGetNextStep}
+                onRunStep={onRunStep}
+              />
+            </div>
+            <div className="min-w-0 flex-1">{step}</div>
+          </div>
         )
       })}
       {children}

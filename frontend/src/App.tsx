@@ -17,11 +17,13 @@ import { useSession } from './session/useSession'
  *
  * `AppShell` owns only the chrome (app bar + rail + pinned main header
  * + scrollable main slot); `ConfigRail` owns the rail's contents,
- * including `TaskForm` pre-session. `Controls` (get_next_step()/
- * run_step()/abort) is pinned via `AppShell`'s `mainHeader` slot, so
- * it stays reachable without scrolling back up through a long
- * `Timeline` (#22's redesign, including the approve/reject gate and
- * inline editing) -- which, along with reload rehydration via
+ * including `TaskForm` pre-session. `Controls` (rollout drawer, phase
+ * badge, abort) is pinned via `AppShell`'s `mainHeader` slot, so it
+ * stays reachable without scrolling back up through a long `Timeline`.
+ * The get_next_step()/run_step() action pair isn't pinned, though --
+ * `Timeline` renders it inline, beside whichever step is current, via
+ * `StepActionButtons` (#22's redesign, including the approve/reject
+ * gate and inline editing) -- which, along with reload rehydration via
  * `RehydratedSessionView` (#24) when one was restored from
  * `?session=<id>`, renders in the scrollable `children` slot. #23's
  * `TemplatesDrawer` trigger lives in the app bar itself (`AppShell`'s
@@ -69,8 +71,6 @@ function App() {
             busy={state.busy}
             sessionId={state.sessionId}
             isCompleted={state.completedResult !== null}
-            onGetNextStep={getNextStep}
-            onRunStep={runNextStep}
             onAbort={abort}
           />
         )
@@ -106,6 +106,8 @@ function App() {
             onReject={reject}
             onEditStep={editStep}
             onEditResult={editResult}
+            onGetNextStep={getNextStep}
+            onRunStep={runNextStep}
           />
         </>
       )}

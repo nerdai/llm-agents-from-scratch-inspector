@@ -10,10 +10,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-import { ArrowRight } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
 import type { Need } from '../api/types'
 import RolloutDrawer from './RolloutDrawer'
 
@@ -25,8 +23,6 @@ interface ControlsProps {
    * `TaskResult` exists) rather than an abort -- distinguishes "Task
    * complete" from "Aborted" in the phase badge below. */
   isCompleted: boolean
-  onGetNextStep: () => void
-  onRunStep: () => void
   onAbort: () => void
 }
 
@@ -42,12 +38,8 @@ function Controls({
   busy,
   sessionId,
   isCompleted,
-  onGetNextStep,
-  onRunStep,
   onAbort,
 }: ControlsProps) {
-  const canNext = need === 'next' && !busy
-  const canRun = need === 'run' && !busy
   // Mirrors useSession's own abort() gate (`need !== 'done' && !busy`),
   // so the button's enabled state never lies about what a click would
   // actually do.
@@ -70,56 +62,8 @@ function Controls({
     onAbort()
   }
 
-  // Whichever call is currently actionable gets a strong, role-colored
-  // "do this now" treatment (violet for get_next_step(), near-black for
-  // run_step()) plus a pulsing ring, mirroring the prototype's own
-  // alternating-highlight buttons -- get_next_step() and run_step() are
-  // one alternating pair the *same* LLM agent drives for every call (the
-  // human operator is the actual overseer in this "supervised" loop, not
-  // either button), never both "live" at once, so exactly one should
-  // visually read as the next action.
-  const nextButtonClassName = cn(
-    'font-mono',
-    canNext
-      ? 'animate-pulse-ring bg-primary text-primary-foreground hover:bg-primary/90 [--pulse-color:var(--primary)]'
-      : 'bg-muted text-muted-foreground hover:bg-muted',
-  )
-  const runButtonClassName = cn(
-    'font-mono',
-    canRun
-      ? 'animate-pulse-ring bg-foreground text-background hover:bg-foreground/90 [--pulse-color:var(--foreground)]'
-      : 'bg-muted text-muted-foreground hover:bg-muted',
-  )
-
   return (
     <div className="flex flex-wrap items-center gap-3.5">
-      {/* get_next_step()/run_step() are one alternating pair, not two
-       * independent buttons -- the connecting arrow makes that pairing
-       * visible instead of just implied by proximity. No role captions
-       * here: both calls are the same LLM agent, not two different
-       * actors -- the human operator is the one actually "overseeing"
-       * this supervised loop. */}
-      <div className="flex items-center gap-2">
-        <Button
-          type="button"
-          variant="ghost"
-          disabled={!canNext}
-          onClick={onGetNextStep}
-          className={nextButtonClassName}
-        >
-          get_next_step()
-        </Button>
-        <ArrowRight className="size-3.5 text-muted-foreground" />
-        <Button
-          type="button"
-          variant="ghost"
-          disabled={!canRun}
-          onClick={onRunStep}
-          className={runButtonClassName}
-        >
-          run_step(step)
-        </Button>
-      </div>
       <RolloutDrawer sessionId={sessionId} />
       <Badge variant="outline" className="font-mono">
         {busy ? 'Calling backend…' : (phaseLabel ?? '')}
