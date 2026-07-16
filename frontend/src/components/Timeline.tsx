@@ -127,11 +127,8 @@ function Timeline({
       onGetNextStep={onGetNextStep}
       onRunStep={onRunStep}
     >
-      {busy && !pendingResult && (need === 'next' || need === 'run') && (
-        <PendingOperationCard
-          role={need === 'next' ? 'overseer' : 'worker'}
-          signature={need === 'next' ? 'get_next_step()' : 'run_step(step)'}
-        />
+      {busy && !pendingResult && need === 'next' && (
+        <PendingOperationCard role="overseer" signature="get_next_step()" />
       )}
       {pendingResult && (
         <FinalResultCard
@@ -162,14 +159,15 @@ interface TimelineStepsProps {
 
 /**
  * Renders each step-pair as a `Collapsible` group, auto-managing which
- * ones are open: only the newest step starts open, and completing it
- * (a new step-pair appearing) collapses whichever was previously
- * newest -- so the timeline stays focused on "what's happening now"
- * without the operator having to manually tidy up older steps. Any
- * step can still be manually expanded/collapsed at any time; a manual
- * toggle is never overridden by the auto-collapse (that only ever
- * touches the *previously*-newest step at the moment a new one
- * appears, not whatever the operator currently has open).
+ * ones are open: only the newest step starts open, and starting the
+ * next one (get_next_step() going in flight, not waiting for it to
+ * resolve -- see `newStepPending` below) collapses whichever was
+ * previously newest -- so the timeline stays focused on "what's
+ * happening now" without the operator having to manually tidy up
+ * older steps. Any step can still be manually expanded/collapsed at
+ * any time; a manual toggle is never overridden by the auto-collapse
+ * (that only ever touches the *previously*-newest step at the moment
+ * a new one begins, not whatever the operator currently has open).
  */
 function TimelineSteps({
   stepPairs,
@@ -183,6 +181,20 @@ function TimelineSteps({
   onRunStep,
   children,
 }: TimelineStepsProps) {
+  // The button column should only ever move *down*, tracking new
+  // content as it accumulates -- never jump back up once a call
+  // resolves. A run_step() call is a continuation of the step-pair
+  // that's already on screen (its overseer half exists, waiting on a
+  // worker half), so its "in flight" card renders *inside* that same
+  // row, right where the real `WorkerCard` will land, rather than in a
+  // separate row below -- the button column never has to relocate for
+  // that whole cycle. A get_next_step() call, by contrast, has no
+  // existing row to attach to (it's about to create a brand new step),
+  // so it's the one case that still gets a fresh row below the last
+  // complete step -- one deliberate step down, never back up.
+  const newStepPending = busy && !pendingResult && need === 'next'
+  const hasChildrenRow = newStepPending || pendingResult !== null
+
   const [openSteps, setOpenSteps] = useState<Set<number>>(() => new Set([0]))
   // React's documented "adjusting state when a prop changes" pattern
   // (calling setState directly in the render body, guarded by a
@@ -191,13 +203,33 @@ function TimelineSteps({
   const [knownPairCount, setKnownPairCount] = useState(stepPairs.length)
   if (stepPairs.length !== knownPairCount) {
     const grew = stepPairs.length > knownPairCount
-    const previouslyNewest = knownPairCount - 1
     setKnownPairCount(stepPairs.length)
     if (grew) {
+      // The newly-real pair opens; collapsing whoever was previously
+      // newest already happened below, the moment its get_next_step()
+      // call *started* -- not here. Doing it here too (keyed to
+      // `stepPairs.length` growth) would shrink that row out from under
+      // the button column in the same instant the new row claims it,
+      // producing a large, jarring upward jump -- exactly the motion
+      // the operator shouldn't see (buttons should only ever move down
+      // as content accumulates, never snap back up).
+      setOpenSteps((prev) => new Set(prev).add(stepPairs.length - 1))
+    }
+  }
+
+  // A get_next_step() call in flight means a new step is about to
+  // exist -- collapse whichever real pair is currently newest right
+  // away, before the new step's row (and the button column) shows up
+  // in that exact spot. Collapsing it later, once the call resolves,
+  // is what caused the jump described above.
+  const [knownNewStepPending, setKnownNewStepPending] = useState(newStepPending)
+  if (newStepPending !== knownNewStepPending) {
+    setKnownNewStepPending(newStepPending)
+    if (newStepPending && stepPairs.length > 0) {
+      const currentNewest = stepPairs.length - 1
       setOpenSteps((prev) => {
         const next = new Set(prev)
-        if (previouslyNewest >= 0) next.delete(previouslyNewest)
-        next.add(stepPairs.length - 1)
+        next.delete(currentNewest)
         return next
       })
     }
@@ -212,24 +244,22 @@ function TimelineSteps({
     })
   }
 
-  // Exactly one row ever owns the button column at a time -- the last
-  // step-pair, unless a `PendingOperationCard` is about to render below
-  // it (a call is in flight), in which case that row takes over as
-  // "current" instead so the buttons don't lag behind the thing that's
-  // actually happening. Every row -- step or pending/final -- reserves
-  // the same left-column width regardless of whether it's occupied, so
-  // card widths never shift depending on which row currently has the
-  // buttons (see the shared `ROW_GRID` below).
-  const childrenShowActions =
-    busy && !pendingResult && (need === 'next' || need === 'run')
-  const hasChildrenRow = childrenShowActions || pendingResult !== null
-
   return (
     <div className="flex flex-col gap-3">
       {stepPairs.map((pair, pairIndex) => {
         const stepNumber = pairIndex + 1
         const open = openSteps.has(pairIndex)
         const preview = !open ? stepPreview(pair) : null
+        const isLastPair = pairIndex === stepPairs.length - 1
+        // An incomplete pair (overseer half only) whose run_step() call
+        // is in flight right now -- see the comment on `newStepPending`
+        // above for why this attaches here instead of a separate row.
+        const attachPendingWorkerHere =
+          isLastPair &&
+          pair.length === 1 &&
+          need === 'run' &&
+          busy &&
+          !pendingResult
 
         const step = (
           <Collapsible open={open} onOpenChange={() => toggleStep(pairIndex)}>
@@ -299,6 +329,12 @@ function TimelineSteps({
                     />
                   )
                 })}
+                {attachPendingWorkerHere && (
+                  <PendingOperationCard
+                    role="worker"
+                    signature="run_step(step)"
+                  />
+                )}
               </div>
             </CollapsibleContent>
           </Collapsible>
@@ -307,16 +343,13 @@ function TimelineSteps({
         // The get_next_step()/run_step() pair lives beside whichever
         // step is current, not pinned in a toolbar -- "current" means
         // the newest step-pair while it's still the one being actively
-        // driven (need is 'next' or 'run'), and only when a pending
-        // operation row isn't about to claim that spot instead (see
-        // `childrenShowActions` above). Once approval/completion takes
-        // over (need is 'approve'/'done'), FinalResultCard is the
-        // actionable element and no button column is shown here.
-        const isCurrentStep = pairIndex === stepPairs.length - 1
+        // driven (need is 'next' or 'run'), and only when a fresh
+        // pending-step row isn't about to claim that spot instead (see
+        // `newStepPending` above). Once approval/completion takes over
+        // (need is 'approve'/'done'), FinalResultCard is the actionable
+        // element and no button column is shown here.
         const showActions =
-          isCurrentStep &&
-          (need === 'next' || need === 'run') &&
-          !childrenShowActions
+          isLastPair && (need === 'next' || need === 'run') && !newStepPending
         return (
           <div key={pair[0].id} className={ROW_GRID}>
             <div className="sticky top-3">
@@ -336,7 +369,7 @@ function TimelineSteps({
       {hasChildrenRow && (
         <div className={ROW_GRID}>
           <div className="sticky top-3">
-            {childrenShowActions && (
+            {newStepPending && (
               <StepActionButtons
                 need={need}
                 busy={busy}
