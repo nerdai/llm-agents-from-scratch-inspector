@@ -29,6 +29,18 @@ interface TimelineProps {
   onRunStep: () => void
 }
 
+// Shared by every row that can carry the get_next_step()/run_step()
+// button column -- the empty-state placeholder, each step-pair, and
+// the pending/final-result row -- so the left column reserves the
+// same width whether or not it's actually occupied (otherwise a
+// step's card visibly narrows/widens as the buttons hop between
+// rows). `animate-in`/`fade-in`/`slide-in-from-bottom` (tw-animate-css)
+// only plays once per row mount, not on every re-render, since each
+// row's key is stable once it exists -- new rows fade in, existing
+// ones don't replay it.
+const ROW_GRID =
+  'grid grid-cols-[9rem_1fr] items-start gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300'
+
 /** A short, one-line preview of a step's instruction, shown on its
  * collapsed trigger row so collapsing doesn't lose all context. */
 function stepPreview(pair: TimelineEntry[]): string | null {
@@ -67,18 +79,18 @@ function Timeline({
   if (entries.length === 0 && !busy && !pendingResult) {
     const showActions = need === 'next' || need === 'run'
     return (
-      <div className="flex items-start gap-3">
-        {showActions && (
-          <div className="sticky top-3 w-36 flex-none">
+      <div className={ROW_GRID}>
+        <div className="sticky top-3">
+          {showActions && (
             <StepActionButtons
               need={need}
               busy={busy}
               onGetNextStep={onGetNextStep}
               onRunStep={onRunStep}
             />
-          </div>
-        )}
-        <p className="min-w-0 flex-1 rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+          )}
+        </div>
+        <p className="min-w-0 rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
           {need === 'run'
             ? 'Waiting on run_step(step) for the pending step.'
             : 'No calls yet — click get_next_step() to begin.'}
@@ -109,6 +121,7 @@ function Timeline({
       lastIndex={lastIndex}
       need={need}
       busy={busy}
+      pendingResult={pendingResult}
       onEditStep={onEditStep}
       onEditResult={onEditResult}
       onGetNextStep={onGetNextStep}
@@ -139,6 +152,7 @@ interface TimelineStepsProps {
   lastIndex: number
   need: Need | null
   busy: boolean
+  pendingResult: TaskResultOut | null
   onEditStep: (instruction: string) => void
   onEditResult: (content: string) => void
   onGetNextStep: () => void
@@ -162,6 +176,7 @@ function TimelineSteps({
   lastIndex,
   need,
   busy,
+  pendingResult,
   onEditStep,
   onEditResult,
   onGetNextStep,
@@ -196,6 +211,18 @@ function TimelineSteps({
       return next
     })
   }
+
+  // Exactly one row ever owns the button column at a time -- the last
+  // step-pair, unless a `PendingOperationCard` is about to render below
+  // it (a call is in flight), in which case that row takes over as
+  // "current" instead so the buttons don't lag behind the thing that's
+  // actually happening. Every row -- step or pending/final -- reserves
+  // the same left-column width regardless of whether it's occupied, so
+  // card widths never shift depending on which row currently has the
+  // buttons (see the shared `ROW_GRID` below).
+  const childrenShowActions =
+    busy && !pendingResult && (need === 'next' || need === 'run')
+  const hasChildrenRow = childrenShowActions || pendingResult !== null
 
   return (
     <div className="flex flex-col gap-3">
@@ -280,29 +307,47 @@ function TimelineSteps({
         // The get_next_step()/run_step() pair lives beside whichever
         // step is current, not pinned in a toolbar -- "current" means
         // the newest step-pair while it's still the one being actively
-        // driven (need is 'next' or 'run'). Once approval/completion
-        // takes over (need is 'approve'/'done'), FinalResultCard is the
+        // driven (need is 'next' or 'run'), and only when a pending
+        // operation row isn't about to claim that spot instead (see
+        // `childrenShowActions` above). Once approval/completion takes
+        // over (need is 'approve'/'done'), FinalResultCard is the
         // actionable element and no button column is shown here.
         const isCurrentStep = pairIndex === stepPairs.length - 1
-        const showActions = isCurrentStep && (need === 'next' || need === 'run')
-        if (!showActions) {
-          return <div key={pair[0].id}>{step}</div>
-        }
+        const showActions =
+          isCurrentStep &&
+          (need === 'next' || need === 'run') &&
+          !childrenShowActions
         return (
-          <div key={pair[0].id} className="flex items-start gap-3">
-            <div className="sticky top-3 w-36 flex-none">
+          <div key={pair[0].id} className={ROW_GRID}>
+            <div className="sticky top-3">
+              {showActions && (
+                <StepActionButtons
+                  need={need}
+                  busy={busy}
+                  onGetNextStep={onGetNextStep}
+                  onRunStep={onRunStep}
+                />
+              )}
+            </div>
+            <div className="min-w-0">{step}</div>
+          </div>
+        )
+      })}
+      {hasChildrenRow && (
+        <div className={ROW_GRID}>
+          <div className="sticky top-3">
+            {childrenShowActions && (
               <StepActionButtons
                 need={need}
                 busy={busy}
                 onGetNextStep={onGetNextStep}
                 onRunStep={onRunStep}
               />
-            </div>
-            <div className="min-w-0 flex-1">{step}</div>
+            )}
           </div>
-        )
-      })}
-      {children}
+          <div className="min-w-0">{children}</div>
+        </div>
+      )}
     </div>
   )
 }
