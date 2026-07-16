@@ -71,12 +71,13 @@ function Controls({
   }
 
   // Whichever call is currently actionable gets a strong, role-colored
-  // "do this now" treatment (violet for the overseer's get_next_step(),
-  // near-black for the worker's run_step()) plus a pulsing ring, mirroring
-  // the prototype's own alternating-highlight buttons -- get_next_step()
-  // and run_step() are one alternating pair the same agent drives (the
-  // overseer deciding, then the worker executing), never both "live" at
-  // once, so exactly one should visually read as the next action.
+  // "do this now" treatment (violet for get_next_step(), near-black for
+  // run_step()) plus a pulsing ring, mirroring the prototype's own
+  // alternating-highlight buttons -- get_next_step() and run_step() are
+  // one alternating pair the *same* LLM agent drives for every call (the
+  // human operator is the actual overseer in this "supervised" loop, not
+  // either button), never both "live" at once, so exactly one should
+  // visually read as the next action.
   const nextButtonClassName = cn(
     'font-mono',
     canNext
@@ -93,39 +94,31 @@ function Controls({
   return (
     <div className="flex flex-wrap items-center gap-3.5">
       {/* get_next_step()/run_step() are one alternating pair, not two
-       * independent buttons -- the arrow + overseer/worker captions
-       * (matching the prototype) make that pairing visible instead of
-       * just implied by proximity. */}
+       * independent buttons -- the connecting arrow makes that pairing
+       * visible instead of just implied by proximity. No role captions
+       * here: both calls are the same LLM agent, not two different
+       * actors -- the human operator is the one actually "overseeing"
+       * this supervised loop. */}
       <div className="flex items-center gap-2">
-        <div className="flex flex-col items-center gap-1">
-          <Button
-            type="button"
-            variant="ghost"
-            disabled={!canNext}
-            onClick={onGetNextStep}
-            className={nextButtonClassName}
-          >
-            get_next_step()
-          </Button>
-          <span className="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
-            overseer
-          </span>
-        </div>
-        <ArrowRight className="mb-4.5 size-3.5 text-muted-foreground" />
-        <div className="flex flex-col items-center gap-1">
-          <Button
-            type="button"
-            variant="ghost"
-            disabled={!canRun}
-            onClick={onRunStep}
-            className={runButtonClassName}
-          >
-            run_step(step)
-          </Button>
-          <span className="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
-            worker
-          </span>
-        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          disabled={!canNext}
+          onClick={onGetNextStep}
+          className={nextButtonClassName}
+        >
+          get_next_step()
+        </Button>
+        <ArrowRight className="size-3.5 text-muted-foreground" />
+        <Button
+          type="button"
+          variant="ghost"
+          disabled={!canRun}
+          onClick={onRunStep}
+          className={runButtonClassName}
+        >
+          run_step(step)
+        </Button>
       </div>
       <RolloutDrawer sessionId={sessionId} />
       <Badge variant="outline" className="font-mono">
