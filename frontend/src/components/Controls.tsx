@@ -10,6 +10,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
+import { ArrowRight } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -91,25 +92,40 @@ function Controls({
 
   return (
     <div className="flex flex-wrap items-center gap-3.5">
-      <div className="flex gap-2.5">
-        <Button
-          type="button"
-          variant="ghost"
-          disabled={!canNext}
-          onClick={onGetNextStep}
-          className={nextButtonClassName}
-        >
-          get_next_step()
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          disabled={!canRun}
-          onClick={onRunStep}
-          className={runButtonClassName}
-        >
-          run_step(step)
-        </Button>
+      {/* get_next_step()/run_step() are one alternating pair, not two
+       * independent buttons -- the arrow + overseer/worker captions
+       * (matching the prototype) make that pairing visible instead of
+       * just implied by proximity. */}
+      <div className="flex items-center gap-2">
+        <div className="flex flex-col items-center gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={!canNext}
+            onClick={onGetNextStep}
+            className={nextButtonClassName}
+          >
+            get_next_step()
+          </Button>
+          <span className="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
+            overseer
+          </span>
+        </div>
+        <ArrowRight className="mb-4.5 size-3.5 text-muted-foreground" />
+        <div className="flex flex-col items-center gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={!canRun}
+            onClick={onRunStep}
+            className={runButtonClassName}
+          >
+            run_step(step)
+          </Button>
+          <span className="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
+            worker
+          </span>
+        </div>
       </div>
       <RolloutDrawer sessionId={sessionId} />
       <Badge variant="outline" className="font-mono">
