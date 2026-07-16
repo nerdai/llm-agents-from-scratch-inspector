@@ -5,12 +5,12 @@ import type { TaskStepResultOut, ToolCallTraceOut } from '../api/types'
 import EditableField from './EditableField'
 import StatusPill from './StatusPill'
 
-interface WorkerCardProps {
+interface StepResultCardProps {
   n: number
   result: TaskStepResultOut
   toolCalls: ToolCallTraceOut[]
   stepCounter: number
-  /** True exactly when this is the most recent worker entry and
+  /** True exactly when this is the most recent result entry and
    * `need === 'next' && !busy` -- see `Timeline`. */
   editable: boolean
   busy: boolean
@@ -69,7 +69,7 @@ function useTypewriterReveal(text: string, msPerChar = 6): string {
  * plus the resulting `TaskStepResult`, editable in place while it's
  * still the pending result the next `get_next_step()` call will see.
  */
-function WorkerCard({
+function StepResultCard({
   n,
   result,
   toolCalls,
@@ -77,7 +77,7 @@ function WorkerCard({
   editable,
   busy,
   onSaveResult,
-}: WorkerCardProps) {
+}: StepResultCardProps) {
   const revealed = useTypewriterReveal(result.content)
   const isRevealing = revealed.length < result.content.length
 
@@ -87,10 +87,7 @@ function WorkerCard({
         <span className="font-mono font-semibold text-muted-foreground">
           #{n}
         </span>
-        <span className="inline-flex items-center gap-1 font-mono text-[11px] font-bold tracking-wide text-amber-700 uppercase dark:text-amber-300">
-          <Wrench className="size-3.5" />
-          worker
-        </span>
+        <Wrench className="size-3.5 text-amber-600 dark:text-amber-300" />
         <code className="rounded bg-amber-500/10 px-1.5 py-0.5 font-mono text-foreground">
           run_step(step)
         </code>
@@ -152,4 +149,4 @@ function WorkerCard({
   )
 }
 
-export default WorkerCard
+export default StepResultCard

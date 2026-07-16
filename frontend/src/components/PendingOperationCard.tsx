@@ -3,18 +3,16 @@ import { Card, CardContent } from '@/components/ui/card'
 import StatusPill from './StatusPill'
 
 interface PendingOperationCardProps {
-  role: 'overseer' | 'worker'
+  kind: 'decision' | 'result'
   signature: string
 }
 
-const ROLE_CLASSES = {
-  overseer: {
+const KIND_CLASSES = {
+  decision: {
     border: 'border-l-violet-500/50',
-    label: 'text-violet-700 dark:text-violet-300',
   },
-  worker: {
+  result: {
     border: 'border-l-amber-500/50',
-    label: 'text-amber-700 dark:text-amber-300',
   },
 } as const
 
@@ -26,8 +24,8 @@ const ROLE_CLASSES = {
  * "in-flight" status per #22 is represented here, driven by the
  * shared `busy`/`need` pair, rather than as per-card history.
  */
-function PendingOperationCard({ role, signature }: PendingOperationCardProps) {
-  const { border, label } = ROLE_CLASSES[role]
+function PendingOperationCard({ kind, signature }: PendingOperationCardProps) {
+  const { border } = KIND_CLASSES[kind]
 
   return (
     <Card
@@ -36,14 +34,9 @@ function PendingOperationCard({ role, signature }: PendingOperationCardProps) {
     >
       <CardContent className="flex items-center gap-2.5 py-3 text-xs">
         <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
-        <span
-          className={`font-mono text-[11px] font-bold tracking-wide uppercase ${label}`}
-        >
-          {role}
-        </span>
         <code className="font-mono text-muted-foreground">{signature}</code>
         <StatusPill
-          tone={role === 'overseer' ? 'violet' : 'amber'}
+          tone={kind === 'decision' ? 'violet' : 'amber'}
           pulse
           className="ml-auto"
         >

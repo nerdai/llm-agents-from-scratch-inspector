@@ -10,7 +10,7 @@ interface EditableFieldProps {
    * the `edited` badge. */
   value: string
   /** What to show in read mode. Defaults to a plain `<p>` of `value`,
-   * but callers (e.g. `WorkerCard`'s streaming-cursor reveal) can pass
+   * but callers (e.g. `StepResultCard`'s streaming-cursor reveal) can pass
    * something richer without affecting the edit/diff plumbing. */
   displayValue?: ReactNode
   label: string

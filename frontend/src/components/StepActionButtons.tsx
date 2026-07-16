@@ -21,9 +21,9 @@ interface StepActionButtonsProps {
  * run_step()) plus a pulsing ring, mirroring the prototype's own
  * alternating-highlight buttons -- get_next_step() and run_step() are
  * one alternating pair the *same* LLM agent drives for every call (the
- * human operator is the actual overseer in this "supervised" loop, not
- * either button), never both "live" at once, so exactly one should
- * visually read as the next action.
+ * human operator is the one actually reviewing every call in this
+ * "supervised" loop, not either button), never both "live" at once, so
+ * exactly one should visually read as the next action.
  */
 function StepActionButtons({
   need,

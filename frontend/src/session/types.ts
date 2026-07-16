@@ -14,24 +14,24 @@ import type {
 /** A normalized, serializable view of a failed request (see `ApiError`). */
 export type ApiErrorInfo = Pick<ApiError, 'status' | 'detail'>
 
-/** One rendered card in the timeline -- either an overseer call
- * (`get_next_step`) or a worker call (`run_step`). */
+/** One rendered card in the timeline -- either a decision
+ * (`get_next_step`) or a result (`run_step`). */
 export type TimelineEntry =
   | {
-      kind: 'overseer'
+      kind: 'decision'
       id: string
       outcome: 'next_step'
       decision: NextStepDecisionOut
       step: TaskStepOut
     }
   | {
-      kind: 'overseer'
+      kind: 'decision'
       id: string
       outcome: 'final_result'
       result: TaskResultOut
     }
   | {
-      kind: 'worker'
+      kind: 'result'
       id: string
       result: TaskStepResultOut
       toolCalls: ToolCallTraceOut[]

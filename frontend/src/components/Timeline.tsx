@@ -9,8 +9,8 @@ import {
 import { cn } from '@/lib/utils'
 import type { Need, TaskResultOut } from '../api/types'
 import type { TimelineEntry } from '../session/types'
-import OverseerCard from './OverseerCard'
-import WorkerCard from './WorkerCard'
+import DecisionCard from './DecisionCard'
+import StepResultCard from './StepResultCard'
 import FinalResultCard from './FinalResultCard'
 import PendingOperationCard from './PendingOperationCard'
 import StepActionButtons from './StepActionButtons'
@@ -44,11 +44,11 @@ const ROW_GRID =
 /** A short, one-line preview of a step's instruction, shown on its
  * collapsed trigger row so collapsing doesn't lose all context. */
 function stepPreview(pair: TimelineEntry[]): string | null {
-  const overseer = pair.find((entry) => entry.kind === 'overseer')
-  if (!overseer || overseer.kind !== 'overseer') return null
-  return overseer.outcome === 'next_step'
-    ? overseer.step.instruction
-    : overseer.result.content
+  const decisionEntry = pair.find((entry) => entry.kind === 'decision')
+  if (!decisionEntry || decisionEntry.kind !== 'decision') return null
+  return decisionEntry.outcome === 'next_step'
+    ? decisionEntry.step.instruction
+    : decisionEntry.result.content
 }
 
 function Timeline({
@@ -102,10 +102,10 @@ function Timeline({
   const lastIndex = entries.length - 1
 
   // get_next_step()/run_step() entries arrive strictly alternating
-  // (overseer, worker, overseer, worker, ...) -- the reducer only ever
-  // pushes an overseer entry on `next-step/succeeded` and a worker
+  // (decision, result, decision, result, ...) -- the reducer only ever
+  // pushes a decision entry on `next-step/succeeded` and a result
   // entry on `run-step/succeeded`, in that call order -- except the
-  // very last entry, which is a lone, unpaired overseer `final_result`
+  // very last entry, which is a lone, unpaired decision `final_result`
   // once the loop ends (no `run_step` follows it). Grouping every two
   // consecutive entries under one step number (and the odd one out
   // under its own) mirrors the book's own framing: the pair together
@@ -128,7 +128,7 @@ function Timeline({
       onRunStep={onRunStep}
     >
       {busy && !pendingResult && need === 'next' && (
-        <PendingOperationCard role="overseer" signature="get_next_step()" />
+        <PendingOperationCard kind="decision" signature="get_next_step()" />
       )}
       {pendingResult && (
         <FinalResultCard
@@ -184,11 +184,11 @@ function TimelineSteps({
   // The button column should only ever move *down*, tracking new
   // content as it accumulates -- never jump back up once a call
   // resolves. A run_step() call is a continuation of the step-pair
-  // that's already on screen (its overseer half exists, waiting on a
-  // worker half), so its "in flight" card renders *inside* that same
-  // row, right where the real `WorkerCard` will land, rather than in a
-  // separate row below -- the button column never has to relocate for
-  // that whole cycle. A get_next_step() call, by contrast, has no
+  // that's already on screen (its decision half exists, waiting on a
+  // result half), so its "in flight" card renders *inside* that same
+  // row, right where the real `StepResultCard` will land, rather than
+  // in a separate row below -- the button column never has to relocate
+  // for that whole cycle. A get_next_step() call, by contrast, has no
   // existing row to attach to (it's about to create a brand new step),
   // so it's the one case that still gets a fresh row below the last
   // complete step -- one deliberate step down, never back up.
@@ -251,10 +251,10 @@ function TimelineSteps({
         const open = openSteps.has(pairIndex)
         const preview = !open ? stepPreview(pair) : null
         const isLastPair = pairIndex === stepPairs.length - 1
-        // An incomplete pair (overseer half only) whose run_step() call
+        // An incomplete pair (decision half only) whose run_step() call
         // is in flight right now -- see the comment on `newStepPending`
         // above for why this attaches here instead of a separate row.
-        const attachPendingWorkerHere =
+        const attachPendingResultHere =
           isLastPair &&
           pair.length === 1 &&
           need === 'run' &&
@@ -284,7 +284,7 @@ function TimelineSteps({
                 {pair.map((entry, offset) => {
                   const i = pairIndex * 2 + offset
                   const isLast = i === lastIndex
-                  if (entry.kind === 'overseer') {
+                  if (entry.kind === 'decision') {
                     // Only the single most-recent `next_step` entry is
                     // editable, and only while the backend is still
                     // sitting on that pending `TaskStep` (need === 'run')
@@ -296,7 +296,7 @@ function TimelineSteps({
                       need === 'run' &&
                       !busy
                     return (
-                      <OverseerCard
+                      <DecisionCard
                         key={entry.id}
                         n={stepNumber}
                         outcome={entry.outcome}
@@ -317,7 +317,7 @@ function TimelineSteps({
                   // Same rule for the last `TaskStepResult` (need === 'next').
                   const editable = isLast && need === 'next' && !busy
                   return (
-                    <WorkerCard
+                    <StepResultCard
                       key={entry.id}
                       n={stepNumber}
                       result={entry.result}
@@ -329,9 +329,9 @@ function TimelineSteps({
                     />
                   )
                 })}
-                {attachPendingWorkerHere && (
+                {attachPendingResultHere && (
                   <PendingOperationCard
-                    role="worker"
+                    kind="result"
                     signature="run_step(step)"
                   />
                 )}

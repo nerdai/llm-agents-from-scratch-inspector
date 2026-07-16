@@ -4,7 +4,7 @@ import type { NextStepDecisionOut, TaskStepOut } from '../api/types'
 import EditableField from './EditableField'
 import StatusPill from './StatusPill'
 
-interface OverseerCardProps {
+interface DecisionCardProps {
   n: number
   outcome: 'next_step' | 'final_result'
   decision?: NextStepDecisionOut
@@ -17,11 +17,11 @@ interface OverseerCardProps {
 }
 
 /**
- * Domain card for one `get_next_step()` call -- the overseer's
- * reasoning/decision plus (for `next_step` outcomes) the proposed
- * `TaskStep`, editable in place while it's still pending `run_step`.
+ * Domain card for one `get_next_step()` call -- its reasoning/decision
+ * plus (for `next_step` outcomes) the proposed `TaskStep`, editable in
+ * place while it's still pending `run_step`.
  */
-function OverseerCard({
+function DecisionCard({
   n,
   outcome,
   decision,
@@ -29,17 +29,14 @@ function OverseerCard({
   editable,
   busy,
   onSaveInstruction,
-}: OverseerCardProps) {
+}: DecisionCardProps) {
   return (
     <Card className="gap-0 border-l-[3px] border-l-violet-500 py-0">
       <CardHeader className="flex-row items-center gap-2.5 border-b bg-violet-500/5 pb-3 text-xs">
         <span className="font-mono font-semibold text-muted-foreground">
           #{n}
         </span>
-        <span className="inline-flex items-center gap-1 font-mono text-[11px] font-bold tracking-wide text-violet-700 uppercase dark:text-violet-300">
-          <Sparkles className="size-3.5" />
-          overseer
-        </span>
+        <Sparkles className="size-3.5 text-violet-600 dark:text-violet-300" />
         <code className="rounded bg-violet-500/10 px-1.5 py-0.5 font-mono text-foreground">
           get_next_step()
         </code>
@@ -85,4 +82,4 @@ function OverseerCard({
   )
 }
 
-export default OverseerCard
+export default DecisionCard

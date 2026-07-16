@@ -139,8 +139,8 @@ export function sessionReducer(
           timeline: [
             ...state.timeline,
             {
-              kind: 'overseer',
-              id: nextEntryId('overseer', state.timeline),
+              kind: 'decision',
+              id: nextEntryId('decision', state.timeline),
               outcome: 'next_step',
               decision: res.decision,
               step: res.step,
@@ -156,8 +156,8 @@ export function sessionReducer(
         timeline: [
           ...state.timeline,
           {
-            kind: 'overseer',
-            id: nextEntryId('overseer', state.timeline),
+            kind: 'decision',
+            id: nextEntryId('decision', state.timeline),
             outcome: 'final_result',
             result: res.result,
           },
@@ -175,8 +175,8 @@ export function sessionReducer(
         timeline: [
           ...state.timeline,
           {
-            kind: 'worker',
-            id: nextEntryId('worker', state.timeline),
+            kind: 'result',
+            id: nextEntryId('result', state.timeline),
             result: res.result,
             toolCalls: res.tool_calls,
             stepCounter: res.step_counter,
@@ -194,7 +194,7 @@ export function sessionReducer(
       const lastIndex = state.timeline.length - 1
       const timeline = state.timeline.map((entry, i) =>
         i === lastIndex &&
-        entry.kind === 'overseer' &&
+        entry.kind === 'decision' &&
         entry.outcome === 'next_step'
           ? { ...entry, step: res.step }
           : entry,
@@ -209,7 +209,7 @@ export function sessionReducer(
       warnOnIllegalTransition(state.need, res.need)
       const lastIndex = state.timeline.length - 1
       const timeline = state.timeline.map((entry, i) =>
-        i === lastIndex && entry.kind === 'worker'
+        i === lastIndex && entry.kind === 'result'
           ? { ...entry, result: res.result }
           : entry,
       )
