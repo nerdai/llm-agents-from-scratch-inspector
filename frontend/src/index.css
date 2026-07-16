@@ -141,3 +141,29 @@
     @apply font-sans;
   }
 }
+
+/*
+ * The prototype's "which button is actionable right now" pulse (its
+ * own `pulseRing` keyframe on `get_next_step()`/`run_step(step)`) --
+ * a soft, expanding ring in the button's own color, not a fixed
+ * hue, so the same animation works for both the overseer (violet
+ * `--primary`) and worker (`--foreground`, near-black) actions. Set
+ * `--pulse-color` on the element to pick which.
+ */
+@keyframes pulse-ring {
+  0%,
+  100% {
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.14),
+      0 0 0 0 color-mix(in srgb, var(--pulse-color) 45%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.14),
+      0 0 0 6px color-mix(in srgb, var(--pulse-color) 0%, transparent);
+  }
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 1.7s infinite;
+}

@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import type { Need } from '../api/types'
 import RolloutDrawer from './RolloutDrawer'
 
@@ -68,24 +69,44 @@ function Controls({
     onAbort()
   }
 
+  // Whichever call is currently actionable gets a strong, role-colored
+  // "do this now" treatment (violet for the overseer's get_next_step(),
+  // near-black for the worker's run_step()) plus a pulsing ring, mirroring
+  // the prototype's own alternating-highlight buttons -- get_next_step()
+  // and run_step() are one alternating pair the same agent drives (the
+  // overseer deciding, then the worker executing), never both "live" at
+  // once, so exactly one should visually read as the next action.
+  const nextButtonClassName = cn(
+    'font-mono',
+    canNext
+      ? 'animate-pulse-ring bg-primary text-primary-foreground hover:bg-primary/90 [--pulse-color:var(--primary)]'
+      : 'bg-muted text-muted-foreground hover:bg-muted',
+  )
+  const runButtonClassName = cn(
+    'font-mono',
+    canRun
+      ? 'animate-pulse-ring bg-foreground text-background hover:bg-foreground/90 [--pulse-color:var(--foreground)]'
+      : 'bg-muted text-muted-foreground hover:bg-muted',
+  )
+
   return (
     <div className="flex flex-wrap items-center gap-3.5">
       <div className="flex gap-2.5">
         <Button
           type="button"
-          variant="secondary"
+          variant="ghost"
           disabled={!canNext}
           onClick={onGetNextStep}
-          className="font-mono"
+          className={nextButtonClassName}
         >
           get_next_step()
         </Button>
         <Button
           type="button"
-          variant="secondary"
+          variant="ghost"
           disabled={!canRun}
           onClick={onRunStep}
-          className="font-mono"
+          className={runButtonClassName}
         >
           run_step(step)
         </Button>
