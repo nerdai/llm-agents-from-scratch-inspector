@@ -13,7 +13,7 @@ dev = [
 ]
 
 [project]
-name = "agent-inspector"
+name = "llm-agents-from-scratch-inspector"
 version = "0.1.0"
 description = "A dev tool for manually driving llm-agents-from-scratch's SupervisedTaskHandler one call at a time, over HTTP, via a React frontend."
 license = "Apache-2.0"

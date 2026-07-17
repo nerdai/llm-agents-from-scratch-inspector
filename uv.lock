@@ -16,47 +16,6 @@ resolution-markers = [
 ]
 
 [[package]]
-name = "agent-inspector"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "fastapi" },
-    { name = "httpx" },
-    { name = "llm-agents-from-scratch" },
-    { name = "typer" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "mypy" },
-    { name = "pre-commit" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "fastapi", specifier = ">=0.115.0,<1.0.0" },
-    { name = "httpx", specifier = ">=0.28.0,<1.0.0" },
-    { name = "llm-agents-from-scratch", specifier = ">=0.0.19,<0.1.0" },
-    { name = "typer", specifier = ">=0.12.0,<1.0.0" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0,<1.0.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "mypy", specifier = ">=1.14.1" },
-    { name = "pre-commit", specifier = ">=4.1.0" },
-    { name = "pytest", specifier = ">=8.3.0" },
-    { name = "pytest-asyncio", specifier = ">=0.24.0" },
-    { name = "pytest-cov", specifier = ">=6.0.0" },
-    { name = "ruff", specifier = ">=0.9.2" },
-]
-
-[[package]]
 name = "annotated-doc"
 version = "0.0.4"
 source = { registry = "https://pypi.org/simple" }
@@ -1069,6 +1028,47 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/cb/69/df68a2c05ab348a9f129964f5e98e68c5309efb2639721ca7eececfd6da5/llm_agents_from_scratch-0.0.20.tar.gz", hash = "sha256:a1aae0f1bcc2d8c6537d33c7df428e5795789d4be1ac878edb291f421bbfaacd", size = 1765080, upload-time = "2026-07-13T23:58:13.97Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/45/54/140550aab2ff2d4763b4ed73da826983ea101596be52277786a9757b8e34/llm_agents_from_scratch-0.0.20-py3-none-any.whl", hash = "sha256:cdac16d2c43534f9a1a92fe5d9e6fed298361edf419721edd4bfae7362d09c35", size = 76671, upload-time = "2026-07-13T23:58:12.411Z" },
+]
+
+[[package]]
+name = "llm-agents-from-scratch-inspector"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "llm-agents-from-scratch" },
+    { name = "typer" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "mypy" },
+    { name = "pre-commit" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi", specifier = ">=0.115.0,<1.0.0" },
+    { name = "httpx", specifier = ">=0.28.0,<1.0.0" },
+    { name = "llm-agents-from-scratch", specifier = ">=0.0.19,<0.1.0" },
+    { name = "typer", specifier = ">=0.12.0,<1.0.0" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0,<1.0.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy", specifier = ">=1.14.1" },
+    { name = "pre-commit", specifier = ">=4.1.0" },
+    { name = "pytest", specifier = ">=8.3.0" },
+    { name = "pytest-asyncio", specifier = ">=0.24.0" },
+    { name = "pytest-cov", specifier = ">=6.0.0" },
+    { name = "ruff", specifier = ">=0.9.2" },
 ]
 
 [[package]]
