@@ -8,6 +8,70 @@ This repo is a two-language monorepo (Python backend + TypeScript
 frontend) packaged as a single PyPI wheel that bundles the built frontend
 assets and ships a CLI.
 
+## Installation
+
+```bash
+pip install llm-agents-from-scratch-inspector
+```
+
+This installs the `agent-inspector` CLI and pulls in
+`llm-agents-from-scratch` as a dependency. (The PyPI distribution name
+differs from the CLI command and the importable package,
+`agent_inspector`, only because the short name was already taken on
+PyPI.) If you're working from a clone of this repo instead, use
+`uv sync` — see [Development](#development) below.
+
+## Using your own agent
+
+`agent-inspector launch` doesn't build an agent from flags or a config
+file — it imports a Python script you write and looks for a
+module-level `agent_builder`: an `LLMAgentBuilder`
+(`llm_agents_from_scratch`) with at least `.with_llm(...)` called on
+it, following the same fluent `with_*` pattern (`.with_tool(...)`,
+`.with_skill(...)`, `.with_memory(...)`, ...) you'd use anywhere else
+in the framework.
+
+```python
+# main.py
+from llm_agents_from_scratch import LLMAgentBuilder
+from llm_agents_from_scratch.llms import OllamaLLM
+
+agent_builder = (
+    LLMAgentBuilder()
+    .with_llm(OllamaLLM(model="qwen3:14b"))
+    .with_tool(my_tool)
+)
+```
+
+```bash
+ollama serve                    # in one terminal, if using OllamaLLM
+agent-inspector launch main.py  # in another
+```
+
+This opens a browser tab at the Inspector UI, where you can enter a
+task and step through `get_next_step()`/`run_step()` against your own
+agent instead of the bundled demo below. `demo.py` (used in the
+Quickstart) is itself just an `agent_builder` script following this
+same convention — see `docs/overview.md`'s "Entrypoint discovery"
+section ([ADR-002](docs/adr/ADR-002-convention-based-entrypoint-discovery.md))
+for the full mechanism.
+
+If `launch` fails, the error is meant to tell you exactly what's
+wrong rather than a bare traceback:
+
+| Error                          | Likely cause                                                        |
+|---------------------------------|-----------------------------------------------------------------------|
+| script not found                | the path doesn't exist relative to your current directory             |
+| error importing script          | the script itself raises — run `python main.py` directly to see why   |
+| no `agent_builder` found        | the variable isn't named exactly `agent_builder`, or isn't at module scope |
+| `agent_builder` has the wrong type | it isn't an `LLMAgentBuilder` instance                              |
+| `agent_builder` isn't ready     | `.with_llm(...)` was never called on it before `launch` imports it    |
+
+Run `agent-inspector launch --help` for the full flag list (`--port`,
+`--no-open`, `--session-ttl-seconds`, ...) — `--dev` and
+`--backend-only` are for contributors working on this repo's own
+frontend, not needed for a normal run.
+
 ## Quickstart
 
 `demo.py` (repo root) is a ready-to-run `agent_builder` entrypoint --
