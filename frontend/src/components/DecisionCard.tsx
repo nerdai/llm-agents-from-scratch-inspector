@@ -5,7 +5,6 @@ import EditableField from './EditableField'
 import StatusPill from './StatusPill'
 
 interface DecisionCardProps {
-  n: number
   outcome: 'next_step' | 'final_result'
   decision?: NextStepDecisionOut
   step?: TaskStepOut
@@ -22,7 +21,6 @@ interface DecisionCardProps {
  * place while it's still pending `run_step`.
  */
 function DecisionCard({
-  n,
   outcome,
   decision,
   step,
@@ -33,9 +31,6 @@ function DecisionCard({
   return (
     <Card className="gap-0 border-l-[3px] border-l-violet-500 py-0">
       <CardHeader className="flex-row items-center gap-2.5 border-b bg-violet-500/5 pb-3 text-xs">
-        <span className="font-mono font-semibold text-muted-foreground">
-          #{n}
-        </span>
         <Sparkles className="size-3.5 text-violet-600 dark:text-violet-300" />
         <code className="rounded bg-violet-500/10 px-1.5 py-0.5 font-mono text-foreground">
           get_next_step()

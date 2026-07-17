@@ -298,7 +298,6 @@ function TimelineSteps({
                     return (
                       <DecisionCard
                         key={entry.id}
-                        n={stepNumber}
                         outcome={entry.outcome}
                         decision={
                           entry.outcome === 'next_step'
@@ -319,7 +318,6 @@ function TimelineSteps({
                   return (
                     <StepResultCard
                       key={entry.id}
-                      n={stepNumber}
                       result={entry.result}
                       toolCalls={entry.toolCalls}
                       stepCounter={entry.stepCounter}

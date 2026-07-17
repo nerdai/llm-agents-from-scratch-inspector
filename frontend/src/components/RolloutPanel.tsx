@@ -75,7 +75,7 @@ function RolloutPanel({ sessionId }: RolloutPanelProps) {
         <ChevronRight
           className={cn(
             'size-3.5 text-muted-foreground transition-transform',
-            open && 'rotate-180',
+            !open && 'rotate-180',
           )}
         />
         <span className="rotate-180 font-mono text-[10px] font-semibold tracking-wide text-muted-foreground uppercase [writing-mode:vertical-rl]">

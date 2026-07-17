@@ -6,7 +6,6 @@ import EditableField from './EditableField'
 import StatusPill from './StatusPill'
 
 interface StepResultCardProps {
-  n: number
   result: TaskStepResultOut
   toolCalls: ToolCallTraceOut[]
   stepCounter: number
@@ -70,7 +69,6 @@ function useTypewriterReveal(text: string, msPerChar = 6): string {
  * still the pending result the next `get_next_step()` call will see.
  */
 function StepResultCard({
-  n,
   result,
   toolCalls,
   stepCounter,
@@ -84,9 +82,6 @@ function StepResultCard({
   return (
     <Card className="gap-0 border-l-[3px] border-l-amber-500 py-0">
       <CardHeader className="flex-row items-center gap-2.5 border-b bg-amber-500/5 pb-3 text-xs">
-        <span className="font-mono font-semibold text-muted-foreground">
-          #{n}
-        </span>
         <Wrench className="size-3.5 text-amber-600 dark:text-amber-300" />
         <code className="rounded bg-amber-500/10 px-1.5 py-0.5 font-mono text-foreground">
           run_step(step)
