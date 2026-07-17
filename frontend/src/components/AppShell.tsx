@@ -43,9 +43,7 @@ function AppShell({ rail, headerEnd, sidePanel, children }: AppShellProps) {
     <div className="flex h-screen flex-col overflow-hidden bg-background">
       <header className="flex h-14 flex-none items-center gap-3.5 border-b bg-card px-5">
         <div className="flex items-center gap-2">
-          <span className="flex size-6.5 items-center justify-center rounded-md bg-primary text-xs font-extrabold text-primary-foreground">
-            A
-          </span>
+          <img src="/favicon.svg" alt="" className="size-6.5 rounded-md" />
           <span className="text-[15px] font-bold tracking-tight">
             Agent Inspector
           </span>
