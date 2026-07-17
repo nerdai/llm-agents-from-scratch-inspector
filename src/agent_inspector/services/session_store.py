@@ -40,6 +40,23 @@ class SessionStore(ABC):
     backend that talks to an external system (and so needs its own
     connection-level locking/transactions) is free to add that
     internally without changing this contract.
+
+    **Identity contract**: ``get(id)`` must return the exact same
+    mutable ``Session`` instance a prior ``set(id, session)`` was
+    given -- never a reconstructed copy. ``SessionService`` relies on
+    this: ``lock_session`` and ``transition_need`` (see
+    ``services/session.py``) mutate a fetched ``Session`` in place
+    (``session._busy``, ``session.need``, ...) and never call
+    ``set()`` again afterward, so those mutations are only durable if
+    ``get()`` keeps handing back a reference to the one object the
+    store holds. A backend that serializes ``Session`` on `set()` and
+    deserializes a fresh copy on every `get()` would silently break
+    the busy-lock and the ``need`` state machine -- see
+    ``InMemorySessionStore`` below for the trivial (dict-reference)
+    case that already satisfies this, and this module's docstring for
+    why ``Session`` isn't meaningfully serializable in the first place
+    (a live ``LLMAgent``/``SupervisedTaskHandler``/MCP connections, not
+    plain data).
     """
 
     @abstractmethod
@@ -51,6 +68,10 @@ class SessionStore(ABC):
         ``drop_session``, and ``lock_session`` to fetch a session, and
         by ``create_session`` (via ``is not None``) to check a
         candidate id isn't already taken.
+
+        Must return the same mutable instance a prior ``set()`` call
+        was given for this id -- see this class's "Identity contract"
+        note. Not a copy, not a reconstruction from serialized data.
 
         Args:
             session_id (str): The session identifier.
@@ -68,6 +89,11 @@ class SessionStore(ABC):
         ``self._sessions[session_id] = session`` directly on
         ``SessionService`` -- used by ``create_session`` to register a
         newly constructed session.
+
+        The stored object is exactly what a later ``get()`` for this
+        id must return (see this class's "Identity contract" note) --
+        implementations must keep a reference to ``session`` itself,
+        not a copy.
 
         Args:
             session_id (str): The session identifier to store under.
@@ -108,7 +134,11 @@ class InMemorySessionStore(SessionStore):
         self._sessions: dict[str, "Session"] = {}
 
     def get(self, session_id: str) -> "Session | None":
-        """See ``SessionStore.get``."""
+        """See ``SessionStore.get``.
+
+        Trivially satisfies the identity contract: a plain ``dict``
+        already stores/returns object references, never copies.
+        """
         return self._sessions.get(session_id)
 
     def set(self, session_id: str, session: "Session") -> None:
