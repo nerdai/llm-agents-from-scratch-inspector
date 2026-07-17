@@ -95,6 +95,10 @@ extend-immutable-calls = ["typer.Argument", "typer.Option"]
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["D104"]
 "tests/**/*.py" = ["D"]
+# `launch`'s options mirror `uvicorn`/typer CLI convention (one param
+# per flag); splitting them into a config object would be a bigger,
+# unrelated refactor than #25's session-TTL option warrants.
+"src/agent_inspector/cli.py" = ["PLR0913"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google" # Ensures Google style
