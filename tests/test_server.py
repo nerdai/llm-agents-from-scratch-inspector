@@ -135,6 +135,28 @@ def test_serve_static_false_is_api_only(built_web_dir: Path) -> None:
     assert client.get("/").status_code == _HTTP_NOT_FOUND
 
 
+def test_lifespan_starts_and_stops_eviction_sweep_cleanly(
+    built_web_dir: Path,
+) -> None:
+    """The app's lifespan (#25) boots/tears down the sweep task cleanly.
+
+    Uses the ``with`` form of ``TestClient``, which is what actually
+    triggers ASGI ``lifespan`` startup/shutdown events (a bare
+    ``TestClient(app)`` with no ``with`` never does, which is why the
+    other tests in this module -- unaffected by the sweep task's
+    existence -- don't need it). A short, explicit sweep interval
+    keeps this fast without needing to wait out a real TTL.
+    """
+    app = server.create_app(
+        session_ttl_seconds=60,
+        session_sweep_interval_seconds=0.05,
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/api/health")
+        assert response.status_code == _HTTP_OK
+
+
 def test_no_built_assets_is_a_noop(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

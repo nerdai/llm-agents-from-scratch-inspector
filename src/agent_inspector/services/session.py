@@ -1,8 +1,10 @@
 """Session lifecycle business logic (see #2).
 
-The in-memory ``SessionStore`` foundation that owns the live
-``LLMAgent`` + ``SupervisedTaskHandler`` per session, the per-session
-busy lock, and the server-authoritative ``need`` state machine.
+Owns the live ``LLMAgent`` + ``SupervisedTaskHandler`` per session, the
+per-session busy lock, and the server-authoritative ``need`` state
+machine. Storage of ``Session`` objects themselves is delegated to a
+pluggable ``SessionStore`` (see ``services/session_store.py``, #27) --
+``InMemorySessionStore`` by default, per ADR-001.
 ``SessionService.create_session_from_config()`` (see #3, reworked by
 #47/ADR-002) calls the configured ``LLMAgentBuilder.build()`` and
 ``run_supervised()``. ``SessionService.get_next_step`` (see #4),
@@ -12,8 +14,10 @@ way; edit endpoints are wired up by other issues (#13, #14).
 """
 
 import asyncio
+import logging
 import secrets
 import threading
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -36,6 +40,7 @@ from llm_agents_from_scratch.data_structures import (
     ToolCallResult,
 )
 from llm_agents_from_scratch.data_structures.skill import SkillScope
+from llm_agents_from_scratch.tools.mcp import MCPTool
 
 from agent_inspector.errors.session import (
     AgentBuilderNotConfiguredError,
@@ -51,6 +56,10 @@ from agent_inspector.errors.session import (
     StepExecutionError,
     ToolExecutionError,
     WrongNeedError,
+)
+from agent_inspector.services.session_store import (
+    InMemorySessionStore,
+    SessionStore,
 )
 
 Need = Literal["next", "run", "approve", "done"]
@@ -77,6 +86,53 @@ _NEED_TRANSITIONS: dict[Need, frozenset[Need]] = {
 
 _SESSION_ID_PREFIX = "sess_"
 _SESSION_ID_TOKEN_BYTES = 8
+
+_logger = logging.getLogger(__name__)
+
+DEFAULT_SESSION_TTL_SECONDS: float = 3600.0
+"""Default idle window before a session is evicted (#25): one hour.
+
+Long enough that an operator stepping away for lunch (or getting
+pulled into a meeting mid-run) doesn't come back to a dropped session,
+short enough that a genuinely abandoned session (closed laptop, dead
+browser tab) doesn't pin its ``LLMAgent``/MCP connections in memory
+indefinitely. Overridable via ``agent-inspector launch``'s
+``--session-ttl-seconds`` option (or the
+``AGENT_INSPECTOR_SESSION_TTL_SECONDS`` env var it reads from).
+"""
+
+_MIN_SWEEP_INTERVAL_SECONDS = 30.0
+_MAX_SWEEP_INTERVAL_SECONDS = 300.0
+_SWEEP_INTERVAL_TTL_FRACTION = 0.1
+
+
+def _default_sweep_interval_seconds(ttl_seconds: float) -> float:
+    """Derive a sane eviction-sweep interval from the configured TTL.
+
+    Not independently configurable (see #25's grounding: "a
+    sweep-interval option or a sane fixed interval derived from the
+    TTL -- use your judgement"): one more CLI knob for a background
+    detail nobody needs to tune isn't worth it. Instead this is 10% of
+    the TTL, clamped to ``[30s, 300s]`` -- frequent enough that a
+    session is evicted within a small, predictable fraction of its TTL
+    past going idle (never more than ~10% late, and never so eager
+    that a very short test TTL busy-loops), but never so tight (sub-30s)
+    that a normal, chatty operator session risks the sweep coinciding
+    with an in-flight call in a way that matters, nor so loose
+    (over 5 minutes) that even a very long TTL leaves evicted sessions
+    lingering for an unreasonable stretch past expiry.
+
+    Args:
+        ttl_seconds (float): The configured idle TTL.
+
+    Returns:
+        float: The sweep interval, in seconds.
+    """
+    raw_interval = ttl_seconds * _SWEEP_INTERVAL_TTL_FRACTION
+    return min(
+        _MAX_SWEEP_INTERVAL_SECONDS,
+        max(_MIN_SWEEP_INTERVAL_SECONDS, raw_interval),
+    )
 
 
 @dataclass
@@ -381,6 +437,18 @@ class Session:
             trace across the session's lifetime, not just the most
             recent call. Appended to (never cleared) by ``run_step``
             (#5); empty for a fresh session.
+        last_activity (float): ``time.monotonic()`` timestamp of the
+            last mutating call on this session (see #25). Bumped by
+            ``lock_session()`` on entry -- the one chokepoint every
+            mutating route already goes through -- so it reflects the
+            start of the most recent ``get_next_step``/``run_step``/
+            ``complete``/``reject``/``abort``/``edit_*`` call, not just
+            session creation. ``SessionService.evict_idle_sessions``
+            compares this against the configured TTL to decide which
+            sessions to evict. ``time.monotonic()`` rather than
+            ``time.time()`` since this is only ever compared to other
+            timestamps taken in the same process, never serialized or
+            compared across a wall-clock adjustment.
     """
 
     id: str
@@ -392,6 +460,7 @@ class Session:
     last_step_result: TaskStepResult | RejectedTaskResult | None = None
     last_rollout_span: tuple[int, int] | None = None
     tool_call_history: list[ToolCallTrace] = field(default_factory=list)
+    last_activity: float = field(default_factory=time.monotonic)
     _busy: bool = field(default=False, repr=False, compare=False)
 
 
@@ -518,7 +587,7 @@ class SessionState:
 
 
 class SessionService:
-    """Owns the in-memory ``SessionStore`` and session lifecycle.
+    """Owns session storage (via a pluggable ``SessionStore``) and lifecycle.
 
     Plain business logic: no FastAPI/Starlette imports. Routes reach
     this through the ``SessionServiceDep`` provider in ``deps.py`` and
@@ -529,7 +598,11 @@ class SessionService:
     session state that must not be recreated per request.
     """
 
-    def __init__(self, agent_builder: LLMAgentBuilder | None = None) -> None:
+    def __init__(
+        self,
+        agent_builder: LLMAgentBuilder | None = None,
+        store: SessionStore | None = None,
+    ) -> None:
         """Initialize an empty SessionService.
 
         Args:
@@ -542,8 +615,16 @@ class SessionService:
                 that only exercise session lifecycle/need-machine
                 behavior (never session *creation*) can keep
                 constructing a bare ``SessionService()``.
+            store (SessionStore | None, optional): Where ``Session``
+                objects are stored (#27). Defaults to a fresh
+                ``InMemorySessionStore`` -- the same in-memory-dict
+                behavior this class used inline before the
+                ``SessionStore`` interface existed (ADR-001) -- so
+                nothing about ``deps.py``'s
+                ``SessionService()`` construction needs to change to
+                pick up this default.
         """
-        self._sessions: dict[str, Session] = {}
+        self.store = store if store is not None else InMemorySessionStore()
         self._registry_lock = threading.Lock()
         self.agent_builder = agent_builder
 
@@ -575,10 +656,10 @@ class SessionService:
         """
         with self._registry_lock:
             session_id = self._generate_session_id()
-            while session_id in self._sessions:
+            while self.store.get(session_id) is not None:
                 session_id = self._generate_session_id()
             session = Session(id=session_id, agent=agent, handler=handler)
-            self._sessions[session_id] = session
+            self.store.set(session_id, session)
         return session
 
     async def create_session_from_config(
@@ -671,7 +752,7 @@ class SessionService:
             SessionNotFoundError: If no session with that id exists.
         """
         with self._registry_lock:
-            session = self._sessions.get(session_id)
+            session = self.store.get(session_id)
             if session is None:
                 raise SessionNotFoundError(session_id)
             return session
@@ -688,12 +769,147 @@ class SessionService:
                 currently in flight (held via ``lock_session``).
         """
         with self._registry_lock:
-            session = self._sessions.get(session_id)
+            session = self.store.get(session_id)
             if session is None:
                 raise SessionNotFoundError(session_id)
             if session._busy:
                 raise SessionBusyError(session_id)
-            del self._sessions[session_id]
+            self.store.delete(session_id)
+
+    @staticmethod
+    async def _close_mcp_providers(session: Session) -> None:
+        """Close every distinct MCP provider backing a session's tools.
+
+        Per #25's grounding: the built ``LLMAgent`` (``session.agent``)
+        doesn't retain a flat list of ``MCPToolProvider``s --
+        ``LLMAgentBuilder.build()`` only threads the flattened
+        ``MCPTool`` instances into ``tools_registry``, discarding the
+        provider list itself. Each ``MCPTool`` does keep a
+        ``.provider`` back-reference, so this recovers the distinct
+        providers by scanning ``tools_registry`` for ``MCPTool``
+        instances and deduping by provider identity (``id()``) --
+        multiple tools commonly share one provider/server, and calling
+        ``.close()`` twice on the same provider is wasteful at best.
+
+        A provider failing to close is logged and does not stop the
+        others from being attempted or block the session's removal
+        from the registry (that already happened by the time this is
+        called) -- a slow/unreachable MCP server shouldn't wedge
+        eviction for every other session sharing the sweep.
+
+        Args:
+            session (Session): The (already-evicted) session whose
+                agent's MCP providers should be closed.
+        """
+        tools_registry = getattr(session.agent, "tools_registry", {})
+        providers = {
+            id(tool.provider): tool.provider
+            for tool in tools_registry.values()
+            if isinstance(tool, MCPTool)
+        }
+        for provider in providers.values():
+            try:
+                await provider.close()
+            except Exception:
+                _logger.exception(
+                    "Failed to close MCP provider %r while evicting "
+                    "session %r.",
+                    provider.name,
+                    session.id,
+                )
+
+    async def evict_idle_sessions(self, ttl_seconds: float) -> list[str]:
+        """Evict every session idle for at least ``ttl_seconds`` (#25).
+
+        A session counts as idle based on ``last_activity`` (bumped by
+        ``lock_session()`` on every mutating call -- see that field's
+        docstring). Sessions currently busy (a mutating call in flight)
+        are skipped this sweep rather than evicted out from under that
+        call; a still-idle busy session is picked up on a later sweep
+        once it's no longer busy. Eviction drops a session from the
+        registry *first* (freeing the ``LLMAgent``/handler for garbage
+        collection -- the same removal ``drop_session`` performs, just
+        selected by idleness instead of an explicit caller request),
+        then closes its MCP providers afterward, outside
+        ``_registry_lock`` (see ``_close_mcp_providers``) -- a slow or
+        hung provider ``close()`` call can't block every other
+        session's registry operations, nor race a concurrent lookup
+        against a session that's mid-teardown but still technically
+        reachable.
+
+        Args:
+            ttl_seconds (float): Idle threshold, in seconds, measured
+                against ``time.monotonic()``.
+
+        Returns:
+            list[str]: The ids of the sessions evicted this call, in
+                no particular order. Empty if nothing was idle enough.
+        """
+        now = time.monotonic()
+        with self._registry_lock:
+            expired = [
+                session
+                for session in self.store.values()
+                if not session._busy
+                and (now - session.last_activity) >= ttl_seconds
+            ]
+            for session in expired:
+                self.store.delete(session.id)
+
+        for session in expired:
+            await self._close_mcp_providers(session)
+
+        if expired:
+            _logger.info(
+                "Evicted %d idle session(s) after %.0fs TTL: %s",
+                len(expired),
+                ttl_seconds,
+                ", ".join(session.id for session in expired),
+            )
+
+        return [session.id for session in expired]
+
+    async def run_eviction_sweep(
+        self,
+        ttl_seconds: float = DEFAULT_SESSION_TTL_SECONDS,
+        interval_seconds: float | None = None,
+    ) -> None:
+        """Run ``evict_idle_sessions`` on a fixed interval, forever (#25).
+
+        Intended to be driven as a background ``asyncio.Task`` started
+        from ``server.py``'s lifespan and cancelled at shutdown -- per
+        the repo's FastAPI layering standard, the sweep loop itself is
+        business logic and lives here, not in ``server.py``. Cancelling
+        the task (``asyncio.CancelledError`` raised out of the
+        in-progress ``asyncio.sleep``) is the intended way to stop this
+        loop and is left to propagate rather than swallowed; any other
+        exception raised by a single sweep iteration is logged and the
+        loop continues rather than the whole background task dying
+        silently.
+
+        Args:
+            ttl_seconds (float): Idle TTL forwarded to
+                ``evict_idle_sessions`` on every sweep. Defaults to
+                ``DEFAULT_SESSION_TTL_SECONDS``.
+            interval_seconds (float | None): How often to sweep.
+                ``None`` (the default) derives a sane interval from
+                ``ttl_seconds`` via ``_default_sweep_interval_seconds``
+                -- see that function's docstring. Tests pass a small
+                value directly rather than waiting on the derived one.
+        """
+        interval = (
+            interval_seconds
+            if interval_seconds is not None
+            else _default_sweep_interval_seconds(ttl_seconds)
+        )
+        while True:
+            await asyncio.sleep(interval)
+            try:
+                await self.evict_idle_sessions(ttl_seconds)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                _logger.exception("Session eviction sweep iteration failed.")
 
     def require_need(self, session: Session, expected: Need) -> None:
         """Assert a session is currently waiting on ``expected``.
@@ -766,12 +982,13 @@ class SessionService:
                 flight.
         """
         with self._registry_lock:
-            session = self._sessions.get(session_id)
+            session = self.store.get(session_id)
             if session is None:
                 raise SessionNotFoundError(session_id)
             if session._busy:
                 raise SessionBusyError(session_id)
             session._busy = True
+            session.last_activity = time.monotonic()
         try:
             yield session
         finally:

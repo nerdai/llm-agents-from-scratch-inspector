@@ -19,6 +19,7 @@ from agent_inspector.errors.session import (
     WrongNeedError,
 )
 from agent_inspector.services.session import Session, SessionService
+from agent_inspector.services.session_store import InMemorySessionStore
 
 # SessionService doesn't inspect the agent/handler at runtime (it's
 # plain in-memory storage), so a cheap stand-in is enough here; the
@@ -138,6 +139,50 @@ class TestSessionLifecycle:
         service.drop_session(session.id)
         with pytest.raises(SessionNotFoundError):
             service.get_session(session.id)
+
+
+class TestPluggableStore:
+    """``SessionService`` delegates storage through a ``SessionStore`` (#27).
+
+    ``InMemorySessionStore`` (the default) is already exercised
+    thoroughly, indirectly, by every other test in this file/module --
+    this class instead proves the *seam* itself: a caller-supplied
+    ``SessionStore`` is actually used, not bypassed by some remaining
+    direct-dict access.
+    """
+
+    def test_custom_store_is_used_for_create_and_get(self) -> None:
+        """A session created via the service round-trips through the
+        supplied store, not a hidden internal dict.
+        """
+        store = InMemorySessionStore()
+        service = SessionService(store=store)
+
+        session = _new_session(service)
+
+        assert store.get(session.id) is session
+        assert service.get_session(session.id) is session
+
+    def test_custom_store_is_used_for_drop(self) -> None:
+        """Dropping a session removes it from the supplied store."""
+        store = InMemorySessionStore()
+        service = SessionService(store=store)
+        session = _new_session(service)
+
+        service.drop_session(session.id)
+
+        assert store.get(session.id) is None
+
+    def test_defaults_to_a_fresh_in_memory_store_per_instance(self) -> None:
+        """Two default-constructed services don't share session state."""
+        first = SessionService()
+        second = SessionService()
+
+        session = _new_session(first)
+
+        assert first.get_session(session.id) is session
+        with pytest.raises(SessionNotFoundError):
+            second.get_session(session.id)
 
 
 class TestNeedStateMachine:

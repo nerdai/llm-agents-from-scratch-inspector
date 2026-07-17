@@ -12,22 +12,41 @@ for anything else -- so client-side routes survive a hard refresh,
 which a single ``StaticFiles(html=True)`` mount at ``/`` cannot do (a
 ``Mount`` owns its whole path prefix; a 404 raised inside it never
 falls through to a route registered after it).
+
+Also owns the app's ``lifespan``: starting/stopping the session-
+eviction background sweep (#25) against the process-wide
+``SessionService`` singleton (``deps.get_session_service()``) for the
+life of the app. The sweep loop itself is business logic and lives in
+``services/session.py`` (``SessionService.run_eviction_sweep``); this
+module only starts/cancels that task at the right time, per the repo's
+FastAPI layering standard (routes/server stay thin, business logic
+lives in ``services/``).
 """
 
+import asyncio
+import contextlib
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from agent_inspector.deps import get_session_service
 from agent_inspector.routes import router
 from agent_inspector.routes.error_handlers import register_exception_handlers
+from agent_inspector.services.session import DEFAULT_SESSION_TTL_SECONDS
 
 WEB_DIR = Path(__file__).parent / "web"
 ASSETS_DIR = WEB_DIR / "assets"
 
 
-def create_app(*, serve_static: bool = True) -> FastAPI:
+def create_app(
+    *,
+    serve_static: bool = True,
+    session_ttl_seconds: float = DEFAULT_SESSION_TTL_SECONDS,
+    session_sweep_interval_seconds: float | None = None,
+) -> FastAPI:
     """Assemble the Agent Inspector FastAPI application.
 
     Args:
@@ -36,11 +55,48 @@ def create_app(*, serve_static: bool = True) -> FastAPI:
             built assets (e.g. in a fresh dev checkout before ``npm
             run build`` has run), this is a no-op so the API still
             boots cleanly. Defaults to True.
+        session_ttl_seconds (float): Idle TTL (#25) after which a
+            session with no mutating call is evicted -- closing its
+            MCP providers and freeing its ``LLMAgent``/handler.
+            Forwarded to the eviction-sweep task started in this app's
+            ``lifespan``. Defaults to
+            ``services.session.DEFAULT_SESSION_TTL_SECONDS``.
+        session_sweep_interval_seconds (float | None): How often the
+            eviction sweep checks for idle sessions. Forwarded verbatim
+            to ``SessionService.run_eviction_sweep`` -- ``None`` (the
+            default) derives a sane interval from
+            ``session_ttl_seconds`` rather than requiring a separate
+            knob; see that method's docstring.
 
     Returns:
         FastAPI: The assembled application.
     """
-    app = FastAPI(title="Agent Inspector")
+
+    @contextlib.asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        """Run the session-eviction sweep (#25) for the app's lifetime.
+
+        Started against ``deps.get_session_service()``'s process-wide
+        singleton -- the same instance every route's ``SessionServiceDep``
+        resolves to -- so no separate DI wiring is needed. Cancelled and
+        awaited on shutdown so the sweep doesn't outlive the app (e.g. in
+        tests that build multiple apps in the same process).
+        """
+        session_service = get_session_service()
+        sweep_task = asyncio.create_task(
+            session_service.run_eviction_sweep(
+                ttl_seconds=session_ttl_seconds,
+                interval_seconds=session_sweep_interval_seconds,
+            ),
+        )
+        try:
+            yield
+        finally:
+            sweep_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await sweep_task
+
+    app = FastAPI(title="Agent Inspector", lifespan=lifespan)
     app.include_router(router)
     register_exception_handlers(app)
 

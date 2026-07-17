@@ -22,6 +22,7 @@ from agent_inspector.errors.discovery import (
     EntrypointDiscoveryError,
 )
 from agent_inspector.server import create_app
+from agent_inspector.services.session import DEFAULT_SESSION_TTL_SECONDS
 
 app = typer.Typer(
     name="agent-inspector",
@@ -109,6 +110,17 @@ def launch(
             "single origin (the Vite dev server's URL)."
         ),
     ),
+    session_ttl_seconds: float = typer.Option(
+        DEFAULT_SESSION_TTL_SECONDS,
+        "--session-ttl-seconds",
+        envvar="AGENT_INSPECTOR_SESSION_TTL_SECONDS",
+        help=(
+            "Evict a session (closing its MCP providers and freeing "
+            "its LLMAgent/handler) after this many seconds with no "
+            "mutating call on it (#25). Also settable via the "
+            "AGENT_INSPECTOR_SESSION_TTL_SECONDS env var."
+        ),
+    ),
 ) -> None:
     """Boot the Agent Inspector backend and (by default) its UI.
 
@@ -129,6 +141,11 @@ def launch(
         dev (bool): Run the Vite dev server alongside the backend
             instead of serving the bundled ``web/`` assets. Defaults
             to False.
+        session_ttl_seconds (float): Idle TTL (#25) after which a
+            session is evicted. Defaults to
+            ``services.session.DEFAULT_SESSION_TTL_SECONDS`` (one
+            hour); also settable via
+            ``AGENT_INSPECTOR_SESSION_TTL_SECONDS``.
     """
     try:
         agent_builder = discover_agent_builder(agent_script)
@@ -139,7 +156,10 @@ def launch(
     configure_agent_builder(agent_builder)
 
     serve_static = not backend_only and not dev
-    fastapi_app = create_app(serve_static=serve_static)
+    fastapi_app = create_app(
+        serve_static=serve_static,
+        session_ttl_seconds=session_ttl_seconds,
+    )
 
     vite_process: Optional[subprocess.Popen[bytes]] = None
     browser_url = f"http://127.0.0.1:{port}"
