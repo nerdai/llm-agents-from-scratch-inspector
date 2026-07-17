@@ -59,12 +59,24 @@ jobs:
           user: __token__
           password: ${{ secrets.PYPI_API_TOKEN }}
 
+      - name: Upload dist for GitHub release
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+
   release_github:
     needs: deploy
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - name: Download dist
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
       - name: Create GitHub Release
         id: create_release
         uses: ncipollo/release-action@v1.21.0
