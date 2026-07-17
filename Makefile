@@ -25,8 +25,8 @@ test:	## Run all tests (backend + frontend).
 test-backend:	## Run the backend test suite.
 	pytest tests -v --capture=no
 
-test-frontend:	## Run the frontend test suite.
-	@echo "No frontend test suite configured yet."
+test-frontend:	## Run the frontend E2E test suite (Playwright, see frontend/e2e/).
+	cd frontend && npx playwright test
 
 coverage: # for ci purposes
 	pytest --cov agent_inspector --cov-report=xml tests
