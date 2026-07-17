@@ -766,11 +766,16 @@ class SessionService:
         docstring). Sessions currently busy (a mutating call in flight)
         are skipped this sweep rather than evicted out from under that
         call; a still-idle busy session is picked up on a later sweep
-        once it's no longer busy. Eviction closes the session's MCP
-        providers (see ``_close_mcp_providers``) and then drops it from
-        the registry, freeing the ``LLMAgent``/handler for garbage
+        once it's no longer busy. Eviction drops a session from the
+        registry *first* (freeing the ``LLMAgent``/handler for garbage
         collection -- the same removal ``drop_session`` performs, just
-        selected by idleness instead of an explicit caller request.
+        selected by idleness instead of an explicit caller request),
+        then closes its MCP providers afterward, outside
+        ``_registry_lock`` (see ``_close_mcp_providers``) -- a slow or
+        hung provider ``close()`` call can't block every other
+        session's registry operations, nor race a concurrent lookup
+        against a session that's mid-teardown but still technically
+        reachable.
 
         Args:
             ttl_seconds (float): Idle threshold, in seconds, measured
