@@ -107,3 +107,87 @@ class TestLaunchDiscoverySuccess:
         assert result.exit_code == 0, result.output
         mock_run.assert_called_once()
         assert isinstance(deps._session_service.agent_builder, LLMAgentBuilder)
+
+
+_CUSTOM_TTL_SECONDS = 42.0
+_ENV_TTL_SECONDS = 99.0
+
+
+class TestLaunchSessionTtlOption:
+    """``--session-ttl-seconds`` / its env var (#25)."""
+
+    def test_default_ttl_is_threaded_to_create_app(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """With no flag, launch uses the module's default TTL."""
+        script = tmp_path / "main.py"
+        script.write_text(_VALID_SCRIPT)
+
+        with (
+            patch("agent_inspector.cli.uvicorn.run"),
+            patch("agent_inspector.cli.create_app") as mock_create_app,
+        ):
+            result = runner.invoke(
+                cli.app,
+                ["launch", str(script), "--backend-only", "--no-open"],
+            )
+
+        assert result.exit_code == 0, result.output
+        mock_create_app.assert_called_once()
+        assert (
+            mock_create_app.call_args.kwargs["session_ttl_seconds"]
+            == cli.DEFAULT_SESSION_TTL_SECONDS
+        )
+
+    def test_flag_overrides_the_ttl(self, tmp_path: Path) -> None:
+        """--session-ttl-seconds is threaded to create_app verbatim."""
+        script = tmp_path / "main.py"
+        script.write_text(_VALID_SCRIPT)
+
+        with (
+            patch("agent_inspector.cli.uvicorn.run"),
+            patch("agent_inspector.cli.create_app") as mock_create_app,
+        ):
+            result = runner.invoke(
+                cli.app,
+                [
+                    "launch",
+                    str(script),
+                    "--backend-only",
+                    "--no-open",
+                    "--session-ttl-seconds",
+                    str(_CUSTOM_TTL_SECONDS),
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert (
+            mock_create_app.call_args.kwargs["session_ttl_seconds"]
+            == _CUSTOM_TTL_SECONDS
+        )
+
+    def test_env_var_overrides_the_ttl(self, tmp_path: Path) -> None:
+        """The env var works without passing the CLI flag."""
+        script = tmp_path / "main.py"
+        script.write_text(_VALID_SCRIPT)
+
+        with (
+            patch("agent_inspector.cli.uvicorn.run"),
+            patch("agent_inspector.cli.create_app") as mock_create_app,
+        ):
+            result = runner.invoke(
+                cli.app,
+                ["launch", str(script), "--backend-only", "--no-open"],
+                env={
+                    "AGENT_INSPECTOR_SESSION_TTL_SECONDS": (
+                        str(_ENV_TTL_SECONDS)
+                    ),
+                },
+            )
+
+        assert result.exit_code == 0, result.output
+        assert (
+            mock_create_app.call_args.kwargs["session_ttl_seconds"]
+            == _ENV_TTL_SECONDS
+        )
