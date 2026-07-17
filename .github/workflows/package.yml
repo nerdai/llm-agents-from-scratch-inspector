@@ -56,7 +56,7 @@ jobs:
         # the build), so this asserts the frontend actually ended up
         # in the wheel instead of trusting the build hook silently.
         run: |
-          wheel="$(find dist -maxdepth 1 -name '*.whl')"
+          wheel="$(bash scripts/find_one_wheel.sh)"
           bash scripts/verify_wheel_contents.sh "$wheel"
 
       - name: Install wheel into a clean venv and smoke-test the CLI
@@ -64,5 +64,5 @@ jobs:
         # parsing works post-install, without needing a live LLM/
         # Ollama backend or a real agent script to point it at.
         run: |
-          wheel="$(find dist -maxdepth 1 -name '*.whl')"
+          wheel="$(bash scripts/find_one_wheel.sh)"
           bash scripts/smoke_test_install.sh "$wheel"

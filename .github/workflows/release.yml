@@ -50,7 +50,7 @@ jobs:
         # wheel before publishing it for real. Same check the
         # non-publishing package.yml workflow runs on every PR.
         run: |
-          wheel="$(find dist -maxdepth 1 -name '*.whl')"
+          wheel="$(bash scripts/find_one_wheel.sh)"
           bash scripts/verify_wheel_contents.sh "$wheel"
 
       - name: Publish package
