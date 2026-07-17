@@ -51,3 +51,24 @@ uv run agent-inspector launch main.py --dev
 
 See `frontend/` for the React/Vite UI and `src/agent_inspector/` for the
 FastAPI backend and CLI.
+
+### Testing
+
+```bash
+make test-backend    # pytest, backend only
+make test-frontend   # Playwright E2E, frontend + a real backend
+make test            # both
+```
+
+`test-frontend` runs the checked-in suite under `frontend/e2e/` --
+first time, install the browser binaries Playwright needs:
+
+```bash
+cd frontend && npx playwright install --with-deps chromium
+```
+
+The suite drives a real `agent-inspector launch` instance end to end
+(no mocking), but needs no live Ollama daemon: `frontend/e2e/fixtures/
+scripted_agent.py` is a network-free `agent_builder` backed by a
+scripted `BaseLLM`, started automatically by `playwright.config.ts`'s
+`webServer`. Nothing needs to be running beforehand.

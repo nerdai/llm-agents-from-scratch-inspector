@@ -21,6 +21,17 @@ export default defineConfig({
     },
   },
   server: {
+    // Explicit IPv4 loopback, not Vite's default `localhost` -- on at
+    // least one real environment (GitHub Actions' `ubuntu-latest`
+    // runners, hit while wiring up the Playwright E2E suite's CI job,
+    // see #62), Node resolves the bare hostname `localhost` to the
+    // IPv6 loopback only, so a client connecting to the IPv4
+    // `127.0.0.1` `cli.py`'s own `browser_url` and this suite's
+    // `playwright.config.ts` both use can never reach it, even though
+    // Vite itself reports "ready". Binding explicitly keeps dev-server
+    // reachability consistent across environments instead of
+    // depending on how a given machine resolves `localhost`.
+    host: '127.0.0.1',
     // In `agent-inspector launch --dev`, the FastAPI backend fronts
     // the API while this dev server fronts the UI; proxying /api
     // keeps both reachable from a single origin during development.

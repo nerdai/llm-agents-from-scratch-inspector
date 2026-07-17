@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+# Playwright E2E output (see e2e/, playwright.config.ts)
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
