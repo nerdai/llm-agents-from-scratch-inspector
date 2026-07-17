@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { FormEvent, KeyboardEvent } from 'react'
+import type { FormEvent, KeyboardEvent, ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
@@ -10,6 +10,11 @@ import type { CreateSessionRequest, SkillScope } from '../api/types'
 interface TaskFormProps {
   onCreate: (req: CreateSessionRequest) => void
   disabled: boolean
+  /** Rendered between the form fields and the "Create session" button
+   * -- e.g. `TemplatesSection`, so "Create session" stays the very
+   * last thing in the rail, matching where "Start new session" sits
+   * post-session (see `ConfigRail`). */
+  children?: ReactNode
 }
 
 const DEFAULT_TASK =
@@ -27,7 +32,7 @@ const SCOPE_OPTIONS: readonly SkillScope[] = ['user', 'project']
  * names are blind inputs here: scope toggle chips and a free-text tag
  * list, not a pre-populated picker.
  */
-function TaskForm({ onCreate, disabled }: TaskFormProps) {
+function TaskForm({ onCreate, disabled, children }: TaskFormProps) {
   const [task, setTask] = useState(DEFAULT_TASK)
   const [scopes, setScopes] = useState<SkillScope[]>([])
   const [explicitSkills, setExplicitSkills] = useState<string[]>([])
@@ -175,6 +180,8 @@ function TaskForm({ onCreate, disabled }: TaskFormProps) {
           model&apos;s visible catalog, but still invokable by name.
         </span>
       </label>
+
+      {children && <div className="border-t pt-4.5">{children}</div>}
 
       <Button type="submit" disabled={!canSubmit}>
         {disabled ? 'Starting…' : 'Create session'}

@@ -62,7 +62,7 @@ function Controls({ need, busy, isCompleted, onAbort }: ControlsProps) {
       <AlertDialog open={abortOpen} onOpenChange={setAbortOpen}>
         <AlertDialogTrigger
           render={
-            <Button type="button" variant="outline" disabled={!canAbort} />
+            <Button type="button" variant="destructive" disabled={!canAbort} />
           }
         >
           Abort

@@ -30,7 +30,11 @@ function SectionLabel({ children }: { children: ReactNode }) {
  * prompt templates aren't session-scoped (shared across every
  * session's agent, same as before this lived in the app bar as
  * `TemplatesDrawer`), so it's available whether or not a session
- * exists yet, same as it always was.
+ * exists yet, same as it always was. In both branches it sits directly
+ * above the primary action button ("Create session"/"Start new
+ * session" -- passed as `TaskForm`'s `children` pre-session, sibling
+ * to the button post-session), so both buttons land in the same spot
+ * with the same styling rather than one living mid-form.
  *
  * Deliberately does not own the timeline, the approve/reject gate, or
  * error toasts (#22/#23), and does not rehydrate from a reload (#24).
@@ -45,10 +49,9 @@ function ConfigRail({ state, onCreate, onReset }: ConfigRailProps) {
   if (!hasSession) {
     return (
       <div className="flex flex-col gap-5 p-4.5">
-        <TaskForm onCreate={onCreate} disabled={state.busy} />
-        <div className="border-t pt-4.5">
+        <TaskForm onCreate={onCreate} disabled={state.busy}>
           <TemplatesSection />
-        </div>
+        </TaskForm>
       </div>
     )
   }
@@ -133,7 +136,7 @@ function ConfigRail({ state, onCreate, onReset }: ConfigRailProps) {
       </div>
 
       {isDone && (
-        <Button type="button" variant="outline" onClick={onReset}>
+        <Button type="button" onClick={onReset}>
           Start new session
         </Button>
       )}
