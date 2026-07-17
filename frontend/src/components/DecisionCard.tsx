@@ -29,7 +29,7 @@ function DecisionCard({
   onSaveInstruction,
 }: DecisionCardProps) {
   return (
-    <Card className="gap-0 border-l-[3px] border-l-violet-500 py-0">
+    <Card className="[--card-spacing:--spacing(5)] gap-0 border-l-[3px] border-l-violet-500 py-0">
       <CardHeader className="flex-row items-center gap-2.5 border-b bg-violet-500/5 pb-3 text-xs">
         <Sparkles className="size-3.5 text-violet-600 dark:text-violet-300" />
         <code className="rounded bg-violet-500/10 px-1.5 py-0.5 font-mono text-foreground">

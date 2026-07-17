@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronRight } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import {
   Collapsible,
   CollapsibleContent,
@@ -47,10 +47,10 @@ function TemplatesSection() {
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger className="group/templates flex w-full items-center gap-1.5 text-left">
-        <ChevronRight
+        <ChevronDown
           className={cn(
             'size-3 flex-none text-muted-foreground transition-transform',
-            open && 'rotate-90',
+            open && 'rotate-180',
           )}
         />
         <span className="text-[10.5px] font-semibold tracking-wide text-muted-foreground uppercase">

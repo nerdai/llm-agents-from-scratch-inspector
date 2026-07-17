@@ -128,15 +128,15 @@ function ConfigRail({ state, onCreate, onReset }: ConfigRailProps) {
         )}
       </div>
 
+      <div className="border-t pt-4.5">
+        <TemplatesSection />
+      </div>
+
       {isDone && (
         <Button type="button" variant="outline" onClick={onReset}>
           Start new session
         </Button>
       )}
-
-      <div className="border-t pt-4.5">
-        <TemplatesSection />
-      </div>
     </div>
   )
 }

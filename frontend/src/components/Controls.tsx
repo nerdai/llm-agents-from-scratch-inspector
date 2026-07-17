@@ -55,36 +55,34 @@ function Controls({ need, busy, isCompleted, onAbort }: ControlsProps) {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-3.5">
+    <div className="flex items-center gap-3.5">
       <Badge variant="outline" className="font-mono">
         {busy ? 'Calling backend…' : (phaseLabel ?? '')}
       </Badge>
-      <div className="ml-auto">
-        <AlertDialog open={abortOpen} onOpenChange={setAbortOpen}>
-          <AlertDialogTrigger
-            render={
-              <Button type="button" variant="outline" disabled={!canAbort} />
-            }
-          >
-            Abort
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Abort this session?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Ends the session immediately without a result. This can&apos;t
-                be undone.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction variant="destructive" onClick={handleAbort}>
-                Abort
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </div>
+      <AlertDialog open={abortOpen} onOpenChange={setAbortOpen}>
+        <AlertDialogTrigger
+          render={
+            <Button type="button" variant="outline" disabled={!canAbort} />
+          }
+        >
+          Abort
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Abort this session?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Ends the session immediately without a result. This can&apos;t be
+              undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={handleAbort}>
+              Abort
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
