@@ -1,4 +1,4 @@
-import { Sparkles } from 'lucide-react'
+import { Lightbulb } from 'lucide-react'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import type { NextStepDecisionOut, TaskStepOut } from '../api/types'
 import EditableField from './EditableField'
@@ -30,8 +30,8 @@ function DecisionCard({
 }: DecisionCardProps) {
   return (
     <Card className="[--card-spacing:--spacing(5)] gap-0 border-l-[3px] border-l-violet-500 py-0">
-      <CardHeader className="flex-row items-center gap-2.5 border-b bg-violet-500/5 pb-3 text-xs">
-        <Sparkles className="size-3.5 text-violet-600 dark:text-violet-300" />
+      <CardHeader className="flex-row items-center gap-2.5 border-b bg-violet-500/5 pt-3 pb-3 text-xs">
+        <Lightbulb className="size-3.5 text-violet-600 dark:text-violet-300" />
         <code className="rounded bg-violet-500/10 px-1.5 py-0.5 font-mono text-foreground">
           get_next_step()
         </code>

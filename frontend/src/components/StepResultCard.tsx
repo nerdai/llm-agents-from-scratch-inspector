@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Wrench } from 'lucide-react'
+import { Cog } from 'lucide-react'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import type { TaskStepResultOut, ToolCallTraceOut } from '../api/types'
 import EditableField from './EditableField'
@@ -81,8 +81,8 @@ function StepResultCard({
 
   return (
     <Card className="[--card-spacing:--spacing(5)] gap-0 border-l-[3px] border-l-amber-500 py-0">
-      <CardHeader className="flex-row items-center gap-2.5 border-b bg-amber-500/5 pb-3 text-xs">
-        <Wrench className="size-3.5 text-amber-600 dark:text-amber-300" />
+      <CardHeader className="flex-row items-center gap-2.5 border-b bg-amber-500/5 pt-3 pb-3 text-xs">
+        <Cog className="size-3.5 text-amber-600 dark:text-amber-300" />
         <code className="rounded bg-amber-500/10 px-1.5 py-0.5 font-mono text-foreground">
           run_step(step)
         </code>
