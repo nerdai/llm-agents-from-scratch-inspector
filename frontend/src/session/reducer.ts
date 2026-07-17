@@ -181,7 +181,6 @@ export function sessionReducer(
             id: nextEntryId('result', state.timeline),
             result: res.result,
             toolCalls: res.tool_calls,
-            stepCounter: res.step_counter,
           },
         ],
       }

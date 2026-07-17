@@ -35,7 +35,6 @@ export type TimelineEntry =
       id: string
       result: TaskStepResultOut
       toolCalls: ToolCallTraceOut[]
-      stepCounter: number
     }
 
 export interface SessionState {

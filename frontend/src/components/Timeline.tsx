@@ -320,7 +320,6 @@ function TimelineSteps({
                       key={entry.id}
                       result={entry.result}
                       toolCalls={entry.toolCalls}
-                      stepCounter={entry.stepCounter}
                       editable={editable}
                       busy={busy}
                       onSaveResult={onEditResult}
