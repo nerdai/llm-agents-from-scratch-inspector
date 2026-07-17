@@ -1,8 +1,10 @@
 """Session lifecycle business logic (see #2).
 
-The in-memory ``SessionStore`` foundation that owns the live
-``LLMAgent`` + ``SupervisedTaskHandler`` per session, the per-session
-busy lock, and the server-authoritative ``need`` state machine.
+Owns the live ``LLMAgent`` + ``SupervisedTaskHandler`` per session, the
+per-session busy lock, and the server-authoritative ``need`` state
+machine. Storage of ``Session`` objects themselves is delegated to a
+pluggable ``SessionStore`` (see ``services/session_store.py``, #27) --
+``InMemorySessionStore`` by default, per ADR-001.
 ``SessionService.create_session_from_config()`` (see #3, reworked by
 #47/ADR-002) calls the configured ``LLMAgentBuilder.build()`` and
 ``run_supervised()``. ``SessionService.get_next_step`` (see #4),
@@ -53,6 +55,10 @@ from agent_inspector.errors.session import (
     SessionNotFoundError,
     StepExecutionError,
     WrongNeedError,
+)
+from agent_inspector.services.session_store import (
+    InMemorySessionStore,
+    SessionStore,
 )
 
 Need = Literal["next", "run", "approve", "done"]
@@ -521,7 +527,7 @@ class SessionState:
 
 
 class SessionService:
-    """Owns the in-memory ``SessionStore`` and session lifecycle.
+    """Owns session storage (via a pluggable ``SessionStore``) and lifecycle.
 
     Plain business logic: no FastAPI/Starlette imports. Routes reach
     this through the ``SessionServiceDep`` provider in ``deps.py`` and
@@ -532,7 +538,11 @@ class SessionService:
     session state that must not be recreated per request.
     """
 
-    def __init__(self, agent_builder: LLMAgentBuilder | None = None) -> None:
+    def __init__(
+        self,
+        agent_builder: LLMAgentBuilder | None = None,
+        store: SessionStore | None = None,
+    ) -> None:
         """Initialize an empty SessionService.
 
         Args:
@@ -545,8 +555,16 @@ class SessionService:
                 that only exercise session lifecycle/need-machine
                 behavior (never session *creation*) can keep
                 constructing a bare ``SessionService()``.
+            store (SessionStore | None, optional): Where ``Session``
+                objects are stored (#27). Defaults to a fresh
+                ``InMemorySessionStore`` -- the same in-memory-dict
+                behavior this class used inline before the
+                ``SessionStore`` interface existed (ADR-001) -- so
+                nothing about ``deps.py``'s
+                ``SessionService()`` construction needs to change to
+                pick up this default.
         """
-        self._sessions: dict[str, Session] = {}
+        self.store = store if store is not None else InMemorySessionStore()
         self._registry_lock = threading.Lock()
         self.agent_builder = agent_builder
 
@@ -578,10 +596,10 @@ class SessionService:
         """
         with self._registry_lock:
             session_id = self._generate_session_id()
-            while session_id in self._sessions:
+            while self.store.get(session_id) is not None:
                 session_id = self._generate_session_id()
             session = Session(id=session_id, agent=agent, handler=handler)
-            self._sessions[session_id] = session
+            self.store.set(session_id, session)
         return session
 
     async def create_session_from_config(
@@ -674,7 +692,7 @@ class SessionService:
             SessionNotFoundError: If no session with that id exists.
         """
         with self._registry_lock:
-            session = self._sessions.get(session_id)
+            session = self.store.get(session_id)
             if session is None:
                 raise SessionNotFoundError(session_id)
             return session
@@ -691,12 +709,12 @@ class SessionService:
                 currently in flight (held via ``lock_session``).
         """
         with self._registry_lock:
-            session = self._sessions.get(session_id)
+            session = self.store.get(session_id)
             if session is None:
                 raise SessionNotFoundError(session_id)
             if session._busy:
                 raise SessionBusyError(session_id)
-            del self._sessions[session_id]
+            self.store.delete(session_id)
 
     @staticmethod
     async def _close_mcp_providers(session: Session) -> None:
@@ -883,7 +901,7 @@ class SessionService:
                 flight.
         """
         with self._registry_lock:
-            session = self._sessions.get(session_id)
+            session = self.store.get(session_id)
             if session is None:
                 raise SessionNotFoundError(session_id)
             if session._busy:

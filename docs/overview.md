@@ -31,7 +31,10 @@ unambiguous where something lives.
 A `Session` (`services/session.py`) is the in-memory record of one
 supervised run: the live `LLMAgent` and `SupervisedTaskHandler`, plus
 whatever state the run needs to pause between HTTP calls. `SessionService`
-owns every live session in a single in-memory `dict[str, Session]` — see
+owns every live session's lifecycle and delegates storage to a pluggable
+`SessionStore` (`services/session_store.py`) — `InMemorySessionStore`
+(a plain `dict[str, Session]`) by default and today the only
+implementation — see
 [ADR-001](adr/ADR-001-in-memory-single-process-session-store.md)
 for why, and the resulting single-worker-process constraint.
 
