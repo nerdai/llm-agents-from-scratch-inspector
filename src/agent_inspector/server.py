@@ -1,7 +1,10 @@
 """FastAPI application assembly.
 
-Builds the ``FastAPI`` app and ``include_router``s from ``routes.py``.
-No business logic lives here. When built frontend assets are present
+Builds the ``FastAPI`` app, ``include_router``s from ``routes.py``,
+and registers the shared ``SessionServiceError`` -> HTTP-response
+handler (``routes/error_handlers.py``, see #26) that every route
+relies on instead of its own per-endpoint try/except. No business
+logic lives here. When built frontend assets are present
 under ``web/``, ``/assets`` (Vite's content-hashed JS/CSS bundles) is
 mounted directly, and a catch-all route serves any other real file
 under ``web/`` (e.g. ``favicon.svg``) or falls back to ``index.html``
@@ -31,6 +34,7 @@ from fastapi.staticfiles import StaticFiles
 
 from agent_inspector.deps import get_session_service
 from agent_inspector.routes import router
+from agent_inspector.routes.error_handlers import register_exception_handlers
 from agent_inspector.services.session import DEFAULT_SESSION_TTL_SECONDS
 
 WEB_DIR = Path(__file__).parent / "web"
@@ -94,6 +98,7 @@ def create_app(
 
     app = FastAPI(title="Agent Inspector", lifespan=lifespan)
     app.include_router(router)
+    register_exception_handlers(app)
 
     # WEB_DIR always contains a tracked `.gitkeep` (even in a fresh,
     # unbuilt checkout), so check for `index.html` specifically rather

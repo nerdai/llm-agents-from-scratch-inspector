@@ -23,7 +23,7 @@ from fastapi import status
 from fastapi.testclient import TestClient
 from llm_agents_from_scratch import LLMAgent
 from llm_agents_from_scratch.base.llm import BaseLLM, StructuredOutputType
-from llm_agents_from_scratch.base.tool import Tool
+from llm_agents_from_scratch.base.tool import BaseTool, Tool
 from llm_agents_from_scratch.data_structures import (
     ChatMessage,
     ChatRole,
@@ -46,6 +46,52 @@ _SECOND_STEP_COUNTER = 2
 def next_number(x: int) -> int:
     """The only real M1 tool: returns the next number after ``x``."""
     return x + 1
+
+
+class _RawRaisingTool(BaseTool):
+    """A tool with no internal error handling that always raises (#26).
+
+    Deliberately *not* a ``SimpleFunctionTool``: that wrapper already
+    catches whatever the wrapped Python function raises and reports it
+    as a ``ToolCallResult(error=True, ...)`` -- it never actually
+    raises out of ``__call__``. This class instead mirrors ``MCPTool``
+    (``tools/mcp/tool.py`` in the framework), which has no internal
+    try/except around ``session.call_tool()`` at all, so a transport
+    failure there -- like this tool's ``RuntimeError`` -- propagates
+    straight out of ``__call__`` and up through the framework's
+    tool-calling loop. That's the case ``ToolExecutionError`` exists to
+    catch at the source (see
+    ``_RecordingSyncTool``/``_RecordingAsyncTool`` in
+    ``services/session.py``).
+    """
+
+    @property
+    def name(self) -> str:
+        """Name of tool."""
+        return "raising_tool"
+
+    @property
+    def description(self) -> str:
+        """Description of tool."""
+        return "A tool that always raises."
+
+    @property
+    def parameters_json_schema(self) -> dict[str, Any]:
+        """JSON schema of tool parameters."""
+        return {
+            "type": "object",
+            "properties": {"x": {"type": "integer"}},
+            "required": ["x"],
+        }
+
+    def __call__(
+        self,
+        tool_call: ToolCall,
+        *args: Any,
+        **kwargs: Any,
+    ) -> ToolCallResult:
+        """Always raise, with no internal error handling."""
+        raise RuntimeError("boom from tool")
 
 
 def _write_skill(root: Path, name: str) -> None:
@@ -138,19 +184,25 @@ async def _build_session(
     llm: BaseLLM,
     *,
     need: str = "run",
+    tools: Sequence[Any] | None = None,
 ) -> tuple[Session, Any]:
     """Build a Session with a real LLMAgent + SupervisedTaskHandler.
 
-    Registers the ``next_number`` tool, obtains a pending ``TaskStep``
-    via ``handler.get_next_step(None)`` (no LLM call needed for the
-    first step), and stashes it on the session the way #4's
-    next-step endpoint is expected to.
+    Registers the ``next_number`` tool by default (or ``tools``, if
+    given -- e.g. #26's ``raising_tool``), obtains a pending
+    ``TaskStep`` via ``handler.get_next_step(None)`` (no LLM call
+    needed for the first step), and stashes it on the session the way
+    #4's next-step endpoint is expected to.
 
     Returns:
         tuple[Session, Any]: The created session and the TaskStep that
             was set as ``pending_step``.
     """
-    agent = LLMAgent(llm=llm, tools=[SimpleFunctionTool(next_number)])
+    default_tools = [SimpleFunctionTool(next_number)]
+    agent = LLMAgent(
+        llm=llm,
+        tools=list(tools) if tools is not None else default_tools,
+    )
     task = Task(instruction="Figure out the next number after 4.")
     handler = await agent.run_supervised(task)
     step = await handler.get_next_step(None)
@@ -402,3 +454,126 @@ class TestRunStepLLMFailure:
 
         assert session.need == "run"
         assert session.pending_step is not None
+
+
+class TestRunStepToolFailure:
+    """502 when a tool call itself raises, distinct from an LLM failure (#26).
+
+    A tool raising (e.g. an MCPTool transport failure -- MCPTool.__call__
+    has no internal try/except around session.call_tool(), so a
+    transport failure there propagates straight through) is caught at
+    the source by the tool-recording wrapper and raised as a
+    ToolExecutionError, not the generic StepExecutionError an
+    LLM/framework failure produces -- both map to 502, but with
+    distinguishable messages.
+    """
+
+    async def test_run_step_tool_failure_returns_502(
+        self,
+        client: TestClient,
+        session_service: SessionService,
+    ) -> None:
+        """A tool that raises maps to 502, not the wrong status code."""
+        tool_call = ToolCall(tool_name="raising_tool", arguments={"x": 1})
+        llm = _ScriptedLLM(tool_call=tool_call)
+        session, _ = await _build_session(
+            session_service,
+            llm,
+            tools=[_RawRaisingTool()],
+        )
+
+        response = client.post(f"/api/sessions/{session.id}/run-step")
+
+        assert response.status_code == status.HTTP_502_BAD_GATEWAY
+
+    async def test_run_step_tool_failure_message_names_the_tool(
+        self,
+        client: TestClient,
+        session_service: SessionService,
+    ) -> None:
+        """The 502 detail names the failing tool, unlike an LLM failure."""
+        tool_call = ToolCall(tool_name="raising_tool", arguments={"x": 1})
+        llm = _ScriptedLLM(tool_call=tool_call)
+        session, _ = await _build_session(
+            session_service,
+            llm,
+            tools=[_RawRaisingTool()],
+        )
+
+        response = client.post(f"/api/sessions/{session.id}/run-step")
+
+        detail = response.json()["detail"]
+        assert "raising_tool" in detail
+        assert "tool call to" in detail
+
+    async def test_run_step_tool_failure_distinct_from_llm_failure(
+        self,
+        client: TestClient,
+        session_service: SessionService,
+    ) -> None:
+        """A tool failure's 502 message differs from an LLM failure's.
+
+        Regression coverage for the ticket's core complaint: before
+        #26, both cases wrapped the underlying exception identically
+        (StepExecutionError around whatever run_step raised), so a
+        caller couldn't tell a tool-call failure from an
+        LLM/framework-level one from the response alone.
+        """
+        tool_call = ToolCall(tool_name="raising_tool", arguments={"x": 1})
+        tool_llm = _ScriptedLLM(tool_call=tool_call)
+        tool_session, _ = await _build_session(
+            session_service,
+            tool_llm,
+            tools=[_RawRaisingTool()],
+        )
+        tool_response = client.post(
+            f"/api/sessions/{tool_session.id}/run-step",
+        )
+
+        llm_failure = _ScriptedLLM(
+            tool_call=None,
+            chat_error=RuntimeError("boom"),
+        )
+        llm_session, _ = await _build_session(session_service, llm_failure)
+        llm_response = client.post(f"/api/sessions/{llm_session.id}/run-step")
+
+        assert tool_response.status_code == status.HTTP_502_BAD_GATEWAY
+        assert llm_response.status_code == status.HTTP_502_BAD_GATEWAY
+        assert tool_response.json()["detail"] != llm_response.json()["detail"]
+
+    async def test_run_step_tool_failure_leaves_need_unchanged(
+        self,
+        client: TestClient,
+        session_service: SessionService,
+    ) -> None:
+        """A failed tool call does not advance the need machine either."""
+        tool_call = ToolCall(tool_name="raising_tool", arguments={"x": 1})
+        llm = _ScriptedLLM(tool_call=tool_call)
+        session, _ = await _build_session(
+            session_service,
+            llm,
+            tools=[_RawRaisingTool()],
+        )
+
+        client.post(f"/api/sessions/{session.id}/run-step")
+
+        assert session.need == "run"
+        assert session.pending_step is not None
+
+
+class TestRunStepSessionBusy:
+    """409 when the session already has a mutating call in flight (#26)."""
+
+    async def test_run_step_busy_session_returns_409(
+        self,
+        client: TestClient,
+        session_service: SessionService,
+    ) -> None:
+        """A run-step call while the session's lock is held gets 409."""
+        llm = _ScriptedLLM(tool_call=None)
+        session, _ = await _build_session(session_service, llm)
+
+        with session_service.lock_session(session.id):
+            response = client.post(f"/api/sessions/{session.id}/run-step")
+
+        assert response.status_code == status.HTTP_409_CONFLICT
