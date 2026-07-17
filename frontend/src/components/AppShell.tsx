@@ -16,6 +16,12 @@ interface AppShellProps {
    * reachable while a long `Timeline` scrolls underneath instead of
    * requiring a scroll back up to reach it. */
   mainHeader?: ReactNode
+  /** Optional content pinned to the right edge of the main content
+   * area, spanning its full height alongside `children` -- e.g.
+   * `RolloutPanel`, a persistent collapsible panel rather than an
+   * overlay, so it can stay open beside the timeline instead of
+   * covering it. Independently scrollable, same as `rail`. */
+  sidePanel?: ReactNode
   /** The main content area -- today this is `App.tsx`'s
    * `Timeline` (plus `RehydratedSessionView` when applicable), but
    * #22/#24 own what actually renders here; this component only owns
@@ -31,16 +37,20 @@ interface AppShellProps {
  * layout.
  *
  * Deliberately a thin, content-agnostic wrapper: it accepts `rail`,
- * `mainHeader`, and `children` as slots rather than hard-coding what
- * goes in them. `mainHeader` sits outside the `<main>` scroll
- * container (its own `flex-none` row), so pinned content like
- * `Controls` stays reachable without scrolling back up through a long
- * `children` (e.g. `Timeline`).
+ * `mainHeader`, `sidePanel`, and `children` as slots rather than
+ * hard-coding what goes in them. `mainHeader` sits outside the
+ * `<main>` scroll container (its own `flex-none` row), so pinned
+ * content like `Controls` stays reachable without scrolling back up
+ * through a long `children` (e.g. `Timeline`). `sidePanel` sits beside
+ * `children` in a shared row, each independently scrollable, so a
+ * panel like `RolloutPanel` can stay open without covering or
+ * shrinking the timeline's own scroll position.
  */
 function AppShell({
   rail,
   headerActions,
   mainHeader,
+  sidePanel,
   children,
 }: AppShellProps) {
   return (
@@ -69,13 +79,16 @@ function AppShell({
         <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {mainHeader && (
             <div className="flex-none border-b bg-background px-5 py-3.5">
-              <div className="mx-auto max-w-3xl">{mainHeader}</div>
+              {mainHeader}
             </div>
           )}
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <div className="mx-auto flex max-w-3xl flex-col gap-4.5 px-5 py-8 pb-16">
-              {children}
+          <div className="flex min-h-0 flex-1">
+            <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+              <div className="flex flex-col gap-4.5 px-5 py-8 pb-16">
+                {children}
+              </div>
             </div>
+            {sidePanel}
           </div>
         </main>
       </div>
