@@ -294,7 +294,7 @@ class TestRunEvictionSweep:
         )
         try:
             for _ in range(200):
-                if session.id not in service._sessions:
+                if service.store.get(session.id) is None:
                     break
                 await asyncio.sleep(0.01)
             else:

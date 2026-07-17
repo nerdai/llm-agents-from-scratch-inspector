@@ -97,3 +97,30 @@ class TestInMemorySessionStore:
         first_store.set("sess_a", _new_session("sess_a"))
 
         assert second_store.get("sess_a") is None
+
+    def test_values_returns_every_stored_session(self) -> None:
+        """``values()`` yields every session currently stored (#25)."""
+        store = InMemorySessionStore()
+        first = _new_session("sess_a")
+        second = _new_session("sess_b")
+        store.set("sess_a", first)
+        store.set("sess_b", second)
+
+        # `Session` is a plain (unhashable) dataclass -- compare by id
+        # instead of set-ing the sessions themselves.
+        assert {s.id for s in store.values()} == {"sess_a", "sess_b"}
+
+    def test_values_reflects_deletions(self) -> None:
+        """A deleted session no longer appears in ``values()``."""
+        store = InMemorySessionStore()
+        store.set("sess_a", _new_session("sess_a"))
+
+        store.delete("sess_a")
+
+        assert list(store.values()) == []
+
+    def test_values_on_empty_store_is_empty(self) -> None:
+        """A fresh store's ``values()`` yields nothing."""
+        store = InMemorySessionStore()
+
+        assert list(store.values()) == []

@@ -784,12 +784,12 @@ class SessionService:
         with self._registry_lock:
             expired = [
                 session
-                for session in self._sessions.values()
+                for session in self.store.values()
                 if not session._busy
                 and (now - session.last_activity) >= ttl_seconds
             ]
             for session in expired:
-                del self._sessions[session.id]
+                self.store.delete(session.id)
 
         for session in expired:
             await self._close_mcp_providers(session)

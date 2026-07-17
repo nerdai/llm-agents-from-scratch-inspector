@@ -9,12 +9,10 @@ implementation today, extracted verbatim from what was previously a
 plain ``dict[str, Session]`` directly on ``SessionService``.
 
 Deliberately minimal: ``SessionService`` only ever needs to look up a
-session by id, store one, and remove one -- see each method's
+session by id, store one, remove one, and (as of the TTL-eviction
+sweep, #25) iterate every stored session -- see each method's
 docstring below for exactly which ``SessionService`` call sites it
-replaces. No iteration/listing operation exists because nothing in
-``SessionService`` currently needs one; a future caller that does
-(e.g. an admin "list all sessions" endpoint, or a TTL-eviction sweep)
-should extend this interface then, not speculatively now.
+replaces.
 
 An ``ABC`` (not ``typing.Protocol``) to match this codebase's existing
 style: the framework this project wraps (``llm_agents_from_scratch``)
@@ -24,7 +22,7 @@ nothing elsewhere in ``agent_inspector`` uses ``Protocol``.
 """
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterable
 
 if TYPE_CHECKING:
     from agent_inspector.services.session import Session
@@ -116,6 +114,25 @@ class SessionStore(ABC):
             session_id (str): The session identifier to remove.
         """
 
+    @abstractmethod
+    def values(self) -> "Iterable[Session]":
+        """Iterate every currently stored session, in no particular order.
+
+        Replaces what was previously ``self._sessions.values()``
+        directly on ``SessionService`` -- used by
+        ``evict_idle_sessions`` (#25) to find idle sessions across the
+        whole registry. A backend fronting an external system (e.g. a
+        database) should expect this to be called periodically over
+        the store's full contents; if that's ever expensive at scale,
+        that's a reason to add a more targeted query method later, not
+        a reason to skip implementing this one now.
+
+        Returns:
+            Iterable[Session]: Every session currently stored. Same
+                identity contract as ``get()`` -- these must be the
+                live, mutable instances, not copies.
+        """
+
 
 class InMemorySessionStore(SessionStore):
     """The default, process-local ``SessionStore`` (ADR-001).
@@ -148,3 +165,7 @@ class InMemorySessionStore(SessionStore):
     def delete(self, session_id: str) -> None:
         """See ``SessionStore.delete``."""
         del self._sessions[session_id]
+
+    def values(self) -> "Iterable[Session]":
+        """See ``SessionStore.values``."""
+        return self._sessions.values()
