@@ -1,18 +1,25 @@
-name: Release
-
+name: Packaging
 on:
   push:
-    tags:
-      - 'v*' # Push events to matching v*, i.e. v1.0, v20.15.10
-
+    branches:
+      - main
+  pull_request:
+    types:
+      - opened
+      - synchronize
 jobs:
-  deploy:
+  build-and-verify-wheel:
+    # Not gated on a tag push and doesn't touch PyPI secrets -- this runs
+    # on every PR/push to main so a broken bundle (or broken post-install
+    # CLI) is caught immediately, rather than only at real release time.
+    # See scripts/verify_wheel_contents.sh and scripts/smoke_test_install.sh
+    # for what's actually being asserted; release.yml reuses the former.
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
     steps:
-      - uses: actions/checkout@v7
+      - name: get code
+        uses: actions/checkout@v7
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -46,28 +53,16 @@ jobs:
       - name: Verify wheel bundles frontend assets
         # hatch_build.py's build hook fails *open* if npm isn't found
         # on PATH (warns and returns successfully instead of failing
-        # the build) -- assert the frontend actually ended up in the
-        # wheel before publishing it for real. Same check the
-        # non-publishing package.yml workflow runs on every PR.
+        # the build), so this asserts the frontend actually ended up
+        # in the wheel instead of trusting the build hook silently.
         run: |
           wheel="$(bash scripts/find_one_wheel.sh)"
           bash scripts/verify_wheel_contents.sh "$wheel"
 
-      - name: Publish package
-        uses: pypa/gh-action-pypi-publish@v1.14.0
-        with:
-          user: __token__
-          password: ${{ secrets.PYPI_API_TOKEN }}
-
-  release_github:
-    needs: deploy
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Create GitHub Release
-        id: create_release
-        uses: ncipollo/release-action@v1.21.0
-        with:
-          artifacts: "dist/*"
-          generateReleaseNotes: true
+      - name: Install wheel into a clean venv and smoke-test the CLI
+        # Proves the entry point actually resolves and argument
+        # parsing works post-install, without needing a live LLM/
+        # Ollama backend or a real agent script to point it at.
+        run: |
+          wheel="$(bash scripts/find_one_wheel.sh)"
+          bash scripts/smoke_test_install.sh "$wheel"
