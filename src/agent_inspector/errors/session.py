@@ -258,11 +258,16 @@ class StepExecutionError(SessionServiceError):
     """Raised when the framework raises while executing a step.
 
     Wraps whatever exception ``SupervisedTaskHandler.run_step()``
-    propagates (e.g. an LLM/network failure of the backbone LLM).
-    Failed *tool calls* do not raise -- the framework already reports
-    those as a ``ToolCallResult(error=True, ...)`` -- so this is
-    reserved for LLM/framework-level failures. Route layer should map
-    this to ``502``.
+    propagates that isn't a tool call raising (see
+    ``ToolExecutionError``, which is raised *at the source* of a tool
+    call -- inside ``_RecordingSyncTool``/``_RecordingAsyncTool`` --
+    and passes through ``run_step``'s catch-all unwrapped rather than
+    being reclassified here). So this is reserved for genuine
+    LLM/framework-level failures (e.g. a network failure talking to
+    the backbone LLM). A tool the framework can't find by name also
+    does not raise -- it's reported as a ``ToolCallResult(error=True,
+    ...)`` by the framework's own tool-calling loop -- so that case
+    doesn't reach here either. Route layer should map this to ``502``.
     """
 
     def __init__(self, session_id: str, cause: Exception) -> None:
@@ -277,4 +282,45 @@ class StepExecutionError(SessionServiceError):
         super().__init__(
             f"Session {session_id!r} failed to execute its pending "
             f"step: {cause}",
+        )
+
+
+class ToolExecutionError(SessionServiceError):
+    """Raised when a tool itself raises while being called.
+
+    Distinct from ``StepExecutionError``: the framework's own
+    tool-calling loop (``TaskHandler.run_step``, called from this
+    service's ``run_step``) has no try/except around ``await
+    tool(tool_call=tool_call)`` -- e.g. ``MCPTool.__call__`` has no
+    internal try/except around ``session.call_tool()``, so a transport
+    failure there propagates straight through. Every tool call (a
+    plain function tool, an MCP tool, or the skill tool) is wrapped
+    for recording before ``run_step`` hands it to the framework (see
+    ``_wrap_tool_for_recording``) -- that wrapper is the one place
+    that sees a tool's own exception at its source, so it raises this
+    instead of letting the original exception reach ``run_step``'s
+    generic ``except Exception`` and get relabeled as a
+    ``StepExecutionError``. Route layer should map this to ``502``.
+    """
+
+    def __init__(
+        self,
+        session_id: str,
+        tool_name: str,
+        cause: Exception,
+    ) -> None:
+        """Initialize a ToolExecutionError.
+
+        Args:
+            session_id (str): The affected session's identifier.
+            tool_name (str): Name of the tool call that raised.
+            cause (Exception): The underlying exception the tool
+                raised.
+        """
+        self.session_id = session_id
+        self.tool_name = tool_name
+        self.cause = cause
+        super().__init__(
+            f"Session {session_id!r} tool call to {tool_name!r} failed: "
+            f"{cause}",
         )

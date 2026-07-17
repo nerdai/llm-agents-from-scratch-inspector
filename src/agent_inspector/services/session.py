@@ -49,6 +49,7 @@ from agent_inspector.errors.session import (
     SessionConfigError,
     SessionNotFoundError,
     StepExecutionError,
+    ToolExecutionError,
     WrongNeedError,
 )
 
@@ -143,17 +144,33 @@ class _ToolCallRecorder:
 
 
 class _RecordingSyncTool(BaseTool):
-    """Wraps a synchronous ``Tool``, recording each call to a recorder."""
+    """Wraps a synchronous ``Tool``, recording each call to a recorder.
 
-    def __init__(self, wrapped: BaseTool, recorder: _ToolCallRecorder) -> None:
+    Also the source point for ``ToolExecutionError``: this is the one
+    place every real tool call passes through before the framework's
+    tool-calling loop sees it (see ``_wrap_tool_for_recording``), so
+    it's where a tool's own exception is caught and re-raised as a
+    distinct, readable domain error rather than left to fall through
+    to ``run_step``'s generic ``except Exception``.
+    """
+
+    def __init__(
+        self,
+        wrapped: BaseTool,
+        recorder: _ToolCallRecorder,
+        session_id: str,
+    ) -> None:
         """Initialize a _RecordingSyncTool.
 
         Args:
             wrapped (BaseTool): The real tool to delegate execution to.
             recorder (_ToolCallRecorder): Collects a trace of calls.
+            session_id (str): The owning session's id, for a readable
+                ``ToolExecutionError`` message if ``wrapped`` raises.
         """
         self._wrapped = wrapped
         self._recorder = recorder
+        self._session_id = session_id
 
     @property
     def name(self) -> str:
@@ -176,28 +193,49 @@ class _RecordingSyncTool(BaseTool):
         *args: Any,
         **kwargs: Any,
     ) -> ToolCallResult:
-        """Execute the wrapped tool and record the call."""
-        result = self._wrapped(tool_call, *args, **kwargs)
+        """Execute the wrapped tool and record the call.
+
+        Raises:
+            ToolExecutionError: If ``wrapped`` itself raises (as
+                opposed to reporting a failure via
+                ``ToolCallResult(error=True, ...)``).
+        """
+        try:
+            result = self._wrapped(tool_call, *args, **kwargs)
+        except Exception as e:
+            raise ToolExecutionError(
+                self._session_id,
+                tool_call.tool_name,
+                e,
+            ) from e
         self._recorder.record(tool_call, result)
         return result
 
 
 class _RecordingAsyncTool(AsyncBaseTool):
-    """Wraps an asynchronous ``Tool``, recording each call to a recorder."""
+    """Wraps an asynchronous ``Tool``, recording each call to a recorder.
+
+    See ``_RecordingSyncTool``'s docstring: the async counterpart of
+    the same ``ToolExecutionError`` source point.
+    """
 
     def __init__(
         self,
         wrapped: AsyncBaseTool,
         recorder: _ToolCallRecorder,
+        session_id: str,
     ) -> None:
         """Initialize a _RecordingAsyncTool.
 
         Args:
             wrapped (AsyncBaseTool): The real tool to delegate to.
             recorder (_ToolCallRecorder): Collects a trace of calls.
+            session_id (str): The owning session's id, for a readable
+                ``ToolExecutionError`` message if ``wrapped`` raises.
         """
         self._wrapped = wrapped
         self._recorder = recorder
+        self._session_id = session_id
 
     @property
     def name(self) -> str:
@@ -220,8 +258,26 @@ class _RecordingAsyncTool(AsyncBaseTool):
         *args: Any,
         **kwargs: Any,
     ) -> ToolCallResult:
-        """Execute the wrapped tool and record the call."""
-        result = await self._wrapped(tool_call, *args, **kwargs)
+        """Execute the wrapped tool and record the call.
+
+        Raises:
+            ToolExecutionError: If ``wrapped`` itself raises (as
+                opposed to reporting a failure via
+                ``ToolCallResult(error=True, ...)``). This is the
+                mechanism that surfaces e.g. an ``MCPTool`` transport
+                failure (``MCPTool.__call__`` has no internal
+                try/except around ``session.call_tool()``) as a
+                distinct, readable error rather than an opaque
+                ``StepExecutionError``.
+        """
+        try:
+            result = await self._wrapped(tool_call, *args, **kwargs)
+        except Exception as e:
+            raise ToolExecutionError(
+                self._session_id,
+                tool_call.tool_name,
+                e,
+            ) from e
         self._recorder.record(tool_call, result)
         return result
 
@@ -229,6 +285,7 @@ class _RecordingAsyncTool(AsyncBaseTool):
 def _wrap_tool_for_recording(
     tool: BaseTool | AsyncBaseTool,
     recorder: _ToolCallRecorder,
+    session_id: str,
 ) -> BaseTool | AsyncBaseTool:
     """Wrap a tool so its real execution is recorded by ``recorder``.
 
@@ -240,14 +297,17 @@ def _wrap_tool_for_recording(
     Args:
         tool (BaseTool | AsyncBaseTool): The real, registered tool.
         recorder (_ToolCallRecorder): Collects a trace of calls.
+        session_id (str): The owning session's id, threaded through so
+            the wrapper can raise a readable ``ToolExecutionError`` if
+            ``tool`` itself raises.
 
     Returns:
         BaseTool | AsyncBaseTool: A same-kind wrapper that delegates
             to ``tool`` and records the call.
     """
     if isinstance(tool, AsyncBaseTool):
-        return _RecordingAsyncTool(tool, recorder)
-    return _RecordingSyncTool(tool, recorder)
+        return _RecordingAsyncTool(tool, recorder, session_id)
+    return _RecordingSyncTool(tool, recorder, session_id)
 
 
 @dataclass
@@ -677,6 +737,22 @@ class SessionService:
         overlapping mutating calls (e.g. two concurrent ``run-step``
         requests) surface as ``409`` rather than serializing silently.
 
+        Uses a plain ``threading.Lock`` (``_registry_lock``), not an
+        ``asyncio.Lock``, even though every caller is an async request
+        handler -- this is safe, not an oversight: ``_registry_lock``
+        is only ever held for the synchronous "check the busy flag,
+        then set/clear it" bookkeeping immediately below and in the
+        ``finally`` block, never across the ``yield`` (i.e. never
+        across an ``await`` in the caller's mutating call). A
+        ``threading.Lock`` acquire/release on an uncontended or
+        briefly-held lock does not block the event loop long enough to
+        matter, and since it's never held across an ``await`` there is
+        no scenario where one coroutine holds it while another
+        coroutine that the event loop schedules also needs it and
+        can't yield -- the classic mixing-sync-locks-into-async
+        deadlock risk requires holding the lock across an ``await``,
+        which this code structurally never does.
+
         Args:
             session_id (str): The session identifier.
 
@@ -854,9 +930,18 @@ class SessionService:
             WrongNeedError: If ``session.need != "run"``.
             NoPendingStepError: If ``need == "run"`` but no
                 ``pending_step`` is recorded (server invariant bug).
+            ToolExecutionError: If a tool call itself raises while
+                being executed (e.g. an ``MCPTool`` transport
+                failure, or a plain function tool raising) -- raised
+                at the source by the tool-recording wrapper (see
+                ``_wrap_tool_for_recording``), distinct from
+                ``StepExecutionError`` below.
             StepExecutionError: If the framework raises while running
-                the step (LLM/framework-level failure, not a failed
-                tool call -- those are reported in the trace instead).
+                the step for any other reason (LLM/framework-level
+                failure -- not a tool call raising, and not a failed
+                tool call the framework itself reports via
+                ``ToolCallResult(error=True, ...)``, which never
+                raises at all).
         """
         self.require_need(session, "run")
         step = session.pending_step
@@ -869,6 +954,7 @@ class SessionService:
             session.agent.tools_registry[tool_name] = _wrap_tool_for_recording(
                 tool,
                 recorder,
+                session.id,
             )
         # `from_scratch__use_skill` isn't in `tools_registry` -- the
         # framework resolves it via a separate, handler-scoped
@@ -885,10 +971,17 @@ class SessionService:
             session.handler._use_skill_tool = _wrap_tool_for_recording(
                 original_use_skill_tool,
                 recorder,
+                session.id,
             )
         rollout_len_before = len(session.handler.rollout)
         try:
             result = await session.handler.run_step(step)
+        except ToolExecutionError:
+            # Already a specific, readable domain error raised at the
+            # source (see _RecordingSyncTool/_RecordingAsyncTool) --
+            # let it propagate as-is rather than relabeling it as a
+            # generic StepExecutionError below.
+            raise
         except Exception as e:
             raise StepExecutionError(session.id, e) from e
         finally:

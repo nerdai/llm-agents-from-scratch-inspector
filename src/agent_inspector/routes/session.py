@@ -1,29 +1,22 @@
 """Session lifecycle routes (see #3-#6, #11).
 
 Routes are intentionally thin: parse the request, call the relevant
-service via its injected dependency, map any domain exception to an
-appropriate ``HTTPException``, and return. No business logic lives
-here -- see ``services/session.py``.
+service via its injected dependency, and return. No business logic
+lives here -- see ``services/session.py``.
+
+Every domain exception ``services/session.py`` raises (a
+``SessionServiceError`` subclass) is deliberately left to propagate
+out of these routes uncaught: ``routes/error_handlers.py`` registers a
+single shared handler on the ``FastAPI`` app (see #26) that maps every
+subclass to its documented status code consistently, so no route needs
+its own ``try/except``-to-``HTTPException`` boilerplate.
 """
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status
 
 from agent_inspector.deps import SessionServiceDep
-from agent_inspector.errors.session import (
-    AgentBuilderNotConfiguredError,
-    AgentBuildError,
-    MissingPendingResultError,
-    MissingRolloutSpanError,
-    NoEditableResultError,
-    NoPendingStepError,
-    SessionBusyError,
-    SessionConfigError,
-    SessionNotFoundError,
-    StepExecutionError,
-    WrongNeedError,
-)
 from agent_inspector.schemas import (
     AbortSessionResponse,
     CreateSessionRequest,
@@ -79,32 +72,19 @@ async def create_session(
             ``need`` (always ``"next"``).
 
     Raises:
-        HTTPException: ``422`` if the request config is invalid, ``500``
-            if no builder was discovered/configured for this process,
-            ``502`` if the configured builder fails to build an agent.
+        SessionConfigError: Mapped to ``422`` if the request config is
+            invalid.
+        AgentBuilderNotConfiguredError: Mapped to ``500`` if no
+            builder was discovered/configured for this process.
+        AgentBuildError: Mapped to ``502`` if the configured builder
+            fails to build an agent.
     """
     explicit_only_skills = request.explicit_only_skills
-    try:
-        session = await session_service.create_session_from_config(
-            task=request.task,
-            skills_scopes=request.skills_scopes,
-            explicit_only_skills=explicit_only_skills,
-        )
-    except SessionConfigError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=e.message,
-        ) from e
-    except AgentBuilderNotConfiguredError as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e),
-        ) from e
-    except AgentBuildError as e:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=str(e),
-        ) from e
+    session = await session_service.create_session_from_config(
+        task=request.task,
+        skills_scopes=request.skills_scopes,
+        explicit_only_skills=explicit_only_skills,
+    )
 
     task = session.handler.task
     # Best-effort, same as `SessionConfig.model`'s docstring: `BaseLLM`
@@ -149,12 +129,10 @@ async def get_session_state(
             task's final result (``None`` if none exists yet).
 
     Raises:
-        HTTPException: ``404`` if ``session_id`` is unknown.
+        SessionNotFoundError: Mapped to ``404`` if ``session_id`` is
+            unknown.
     """
-    try:
-        session = session_service.get_session(session_id)
-    except SessionNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
+    session = session_service.get_session(session_id)
 
     state = session_service.get_session_state(session)
     return SessionStateResponse(
@@ -205,12 +183,10 @@ async def get_session_rollout(
         RolloutResponse: ``handler.rollout`` verbatim.
 
     Raises:
-        HTTPException: ``404`` if ``session_id`` is unknown.
+        SessionNotFoundError: Mapped to ``404`` if ``session_id`` is
+            unknown.
     """
-    try:
-        session = session_service.get_session(session_id)
-    except SessionNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
+    session = session_service.get_session(session_id)
 
     return RolloutResponse(rollout=session_service.get_rollout(session))
 
@@ -254,16 +230,14 @@ async def post_next_step(
             final result.
 
     Raises:
-        HTTPException: 404 if ``session_id`` is unknown; 409 if the
-            session isn't currently waiting on ``next`` or already
-            has another mutating call in flight.
+        SessionNotFoundError: Mapped to 404 if ``session_id`` is
+            unknown.
+        WrongNeedError: Mapped to 409 if the session isn't currently
+            waiting on ``next``.
+        SessionBusyError: Mapped to 409 if the session already has
+            another mutating call in flight.
     """
-    try:
-        outcome = await session_service.get_next_step(session_id)
-    except SessionNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
-    except (WrongNeedError, SessionBusyError) as e:
-        raise HTTPException(status_code=409, detail=str(e)) from e
+    outcome = await session_service.get_next_step(session_id)
 
     if isinstance(outcome, NextStepDecisionOutcome):
         return {
@@ -301,26 +275,24 @@ async def post_run_step(
             success).
 
     Raises:
-        HTTPException: ``404`` if the session doesn't exist, ``409``
-            if the session is busy or not waiting on ``need == "run"``,
-            ``502`` if the framework raises while executing the step
-            (LLM/framework-level failure), ``500`` on a server
-            invariant violation (``need == "run"`` with no pending
-            step recorded).
+        SessionNotFoundError: Mapped to ``404`` if the session doesn't
+            exist.
+        SessionBusyError: Mapped to ``409`` if the session is busy.
+        WrongNeedError: Mapped to ``409`` if the session isn't waiting
+            on ``need == "run"``.
+        ToolExecutionError: Mapped to ``502`` if a tool call itself
+            raises while executing (e.g. an ``MCPTool`` transport
+            failure, or a plain function tool raising) -- distinct
+            from ``StepExecutionError`` below.
+        StepExecutionError: Mapped to ``502`` if the framework raises
+            while executing the step for any other reason
+            (LLM/framework-level failure).
+        NoPendingStepError: Mapped to ``500`` on a server invariant
+            violation (``need == "run"`` with no pending step
+            recorded).
     """
-    try:
-        with session_service.lock_session(session_id) as session:
-            outcome = await session_service.run_step(session)
-    except SessionNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
-    except SessionBusyError as e:
-        raise HTTPException(status_code=409, detail=str(e)) from e
-    except WrongNeedError as e:
-        raise HTTPException(status_code=409, detail=str(e)) from e
-    except StepExecutionError as e:
-        raise HTTPException(status_code=502, detail=str(e)) from e
-    except NoPendingStepError as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    with session_service.lock_session(session_id) as session:
+        outcome = await session_service.run_step(session)
 
     return RunStepResponse(
         result=TaskStepResultOut(
@@ -364,21 +336,18 @@ async def patch_step(
             (unchanged) ``need`` (``"run"``).
 
     Raises:
-        HTTPException: ``404`` if the session doesn't exist, ``409``
-            if the session is busy or not waiting on ``need == "run"``,
-            ``500`` on a server invariant violation (``need == "run"``
-            with no pending step recorded).
+        SessionNotFoundError: Mapped to ``404`` if the session doesn't
+            exist.
+        SessionBusyError: Mapped to ``409`` if the session is busy.
+        WrongNeedError: Mapped to ``409`` if the session isn't waiting
+            on ``need == "run"``.
+        NoPendingStepError: Mapped to ``500`` on a server invariant
+            violation (``need == "run"`` with no pending step
+            recorded).
     """
-    try:
-        with session_service.lock_session(session_id) as session:
-            step = session_service.edit_step(session, request.instruction)
-            need = session.need
-    except SessionNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
-    except (SessionBusyError, WrongNeedError) as e:
-        raise HTTPException(status_code=409, detail=str(e)) from e
-    except NoPendingStepError as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    with session_service.lock_session(session_id) as session:
+        step = session_service.edit_step(session, request.instruction)
+        need = session.need
 
     return EditStepResponse(step=step, edited=True, need=need)
 
@@ -403,22 +372,20 @@ async def complete_session(
             ..., "content": ...}, "need": "done"}``.
 
     Raises:
-        HTTPException: ``404`` if the session doesn't exist, ``409``
-            if the session isn't at ``need="approve"`` or already has
-            a call in flight, ``500`` if the session reached
-            ``need="approve"`` without a pending result stored (a
-            server-side bug elsewhere in the ``need`` orchestration).
+        SessionNotFoundError: Mapped to ``404`` if the session doesn't
+            exist.
+        SessionBusyError: Mapped to ``409`` if the session already has
+            a call in flight.
+        WrongNeedError: Mapped to ``409`` if the session isn't at
+            ``need="approve"``.
+        MissingPendingResultError: Mapped to ``500`` if the session
+            reached ``need="approve"`` without a pending result stored
+            (a server-side bug elsewhere in the ``need``
+            orchestration).
     """
-    try:
-        with session_service.lock_session(session_id) as session:
-            result = await session_service.complete(session)
-            need = session.need
-    except SessionNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
-    except (SessionBusyError, WrongNeedError) as e:
-        raise HTTPException(status_code=409, detail=str(e)) from e
-    except MissingPendingResultError as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    with session_service.lock_session(session_id) as session:
+        result = await session_service.complete(session)
+        need = session.need
 
     return {
         "status": "resolved",
@@ -450,23 +417,21 @@ async def patch_result(
             the session's (unchanged) ``need`` (``"next"``).
 
     Raises:
-        HTTPException: ``404`` if the session doesn't exist, ``409``
-            if the session is busy, isn't waiting on ``need == "next"``,
-            or has no editable ``TaskStepResult`` right now (a fresh
-            session, or one that just came out of a rejection), ``500``
-            on a server invariant violation (an editable result with
-            no recorded rollout span).
+        SessionNotFoundError: Mapped to ``404`` if the session doesn't
+            exist.
+        SessionBusyError: Mapped to ``409`` if the session is busy.
+        WrongNeedError: Mapped to ``409`` if the session isn't waiting
+            on ``need == "next"``.
+        NoEditableResultError: Mapped to ``409`` if the session has no
+            editable ``TaskStepResult`` right now (a fresh session, or
+            one that just came out of a rejection).
+        MissingRolloutSpanError: Mapped to ``500`` on a server
+            invariant violation (an editable result with no recorded
+            rollout span).
     """
-    try:
-        with session_service.lock_session(session_id) as session:
-            result = session_service.edit_result(session, request.content)
-            need = session.need
-    except SessionNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
-    except (SessionBusyError, WrongNeedError, NoEditableResultError) as e:
-        raise HTTPException(status_code=409, detail=str(e)) from e
-    except MissingRolloutSpanError as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    with session_service.lock_session(session_id) as session:
+        result = session_service.edit_result(session, request.content)
+        need = session.need
 
     return EditResultResponse(
         result=TaskStepResultOut(
@@ -498,18 +463,16 @@ async def abort_session(
         AbortSessionResponse: ``{"status": "aborted", "need": "done"}``.
 
     Raises:
-        HTTPException: ``404`` if the session doesn't exist, ``409``
-            if the session is already at ``need="done"`` or already
-            has a call in flight.
+        SessionNotFoundError: Mapped to ``404`` if the session doesn't
+            exist.
+        SessionBusyError: Mapped to ``409`` if the session already has
+            a call in flight.
+        WrongNeedError: Mapped to ``409`` if the session is already at
+            ``need="done"``.
     """
-    try:
-        with session_service.lock_session(session_id) as session:
-            await session_service.abort(session)
-            need = session.need
-    except SessionNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
-    except (SessionBusyError, WrongNeedError) as e:
-        raise HTTPException(status_code=409, detail=str(e)) from e
+    with session_service.lock_session(session_id) as session:
+        await session_service.abort(session)
+        need = session.need
 
     return AbortSessionResponse(status="aborted", need=need)
 
@@ -537,22 +500,20 @@ async def reject_session(
             success).
 
     Raises:
-        HTTPException: ``404`` if the session doesn't exist, ``409``
-            if the session isn't at ``need="approve"`` or already has
-            a call in flight, ``500`` if the session reached
-            ``need="approve"`` without a pending result stored (a
-            server-side bug elsewhere in the ``need`` orchestration).
+        SessionNotFoundError: Mapped to ``404`` if the session doesn't
+            exist.
+        SessionBusyError: Mapped to ``409`` if the session already has
+            a call in flight.
+        WrongNeedError: Mapped to ``409`` if the session isn't at
+            ``need="approve"``.
+        MissingPendingResultError: Mapped to ``500`` if the session
+            reached ``need="approve"`` without a pending result stored
+            (a server-side bug elsewhere in the ``need``
+            orchestration).
     """
-    try:
-        with session_service.lock_session(session_id) as session:
-            rejected = session_service.reject(session, request.feedback)
-            need = session.need
-    except SessionNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
-    except (SessionBusyError, WrongNeedError) as e:
-        raise HTTPException(status_code=409, detail=str(e)) from e
-    except MissingPendingResultError as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    with session_service.lock_session(session_id) as session:
+        rejected = session_service.reject(session, request.feedback)
+        need = session.need
 
     return RejectResponse(
         rejected=RejectedTaskResultOut(
