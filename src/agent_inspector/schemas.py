@@ -97,13 +97,17 @@ class CreateSessionResponse(BaseModel):
     names (``LLMAgent.tools_registry``, see #8). ``skills`` reflects
     the real skills the framework discovered for this session
     (``SupervisedTaskHandler.skills``, see #9), tagged with whether
-    each was requested as ``explicit_only_skills``.
+    each was requested as ``explicit_only_skills``. ``model`` is
+    best-effort, same rationale as ``SessionConfigOut.model`` below --
+    ``BaseLLM`` has no generic ``model`` attribute, only concrete
+    implementations do.
     """
 
     session_id: str
     task: TaskOut
     tools: list[str] = Field(default_factory=list)
     skills: list[SkillOut] = Field(default_factory=list)
+    model: str | None = None
     need: str
 
 

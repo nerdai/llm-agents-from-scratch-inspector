@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { FormEvent, KeyboardEvent } from 'react'
+import type { FormEvent, KeyboardEvent, ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
@@ -10,6 +10,11 @@ import type { CreateSessionRequest, SkillScope } from '../api/types'
 interface TaskFormProps {
   onCreate: (req: CreateSessionRequest) => void
   disabled: boolean
+  /** Rendered between the form fields and the "Create session" button
+   * -- e.g. `TemplatesSection`, so "Create session" stays the very
+   * last thing in the rail, matching where "Start new session" sits
+   * post-session (see `ConfigRail`). */
+  children?: ReactNode
 }
 
 const DEFAULT_TASK =
@@ -27,7 +32,7 @@ const SCOPE_OPTIONS: readonly SkillScope[] = ['user', 'project']
  * names are blind inputs here: scope toggle chips and a free-text tag
  * list, not a pre-populated picker.
  */
-function TaskForm({ onCreate, disabled }: TaskFormProps) {
+function TaskForm({ onCreate, disabled, children }: TaskFormProps) {
   const [task, setTask] = useState(DEFAULT_TASK)
   const [scopes, setScopes] = useState<SkillScope[]>([])
   const [explicitSkills, setExplicitSkills] = useState<string[]>([])
@@ -102,19 +107,33 @@ function TaskForm({ onCreate, disabled }: TaskFormProps) {
           Skills scope
         </span>
         <div className="flex gap-1.5">
-          {SCOPE_OPTIONS.map((scope) => (
-            <Button
-              key={scope}
-              type="button"
-              size="sm"
-              variant={scopes.includes(scope) ? 'default' : 'outline'}
-              disabled={disabled}
-              onClick={() => toggleScope(scope)}
-              aria-pressed={scopes.includes(scope)}
-            >
-              {scope}
-            </Button>
-          ))}
+          {SCOPE_OPTIONS.map((scope) => {
+            const active = scopes.includes(scope)
+            return (
+              <button
+                key={scope}
+                type="button"
+                disabled={disabled}
+                onClick={() => toggleScope(scope)}
+                aria-pressed={active}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 font-mono text-[11px] font-semibold tracking-wide uppercase transition-colors',
+                  active
+                    ? 'border-primary/45 bg-primary/10 text-primary'
+                    : 'border-border bg-transparent text-muted-foreground hover:border-foreground/20',
+                  disabled && 'pointer-events-none opacity-50',
+                )}
+              >
+                <span
+                  className={cn(
+                    'size-1.5 rounded-full',
+                    active ? 'bg-primary' : 'bg-muted-foreground/40',
+                  )}
+                />
+                {scope}
+              </button>
+            )
+          })}
         </div>
         <span className="text-[11px] text-muted-foreground">
           Optional -- omit to use the agent&apos;s default discovery scopes.
@@ -161,6 +180,8 @@ function TaskForm({ onCreate, disabled }: TaskFormProps) {
           model&apos;s visible catalog, but still invokable by name.
         </span>
       </label>
+
+      {children && <div className="border-t pt-4.5">{children}</div>}
 
       <Button type="submit" disabled={!canSubmit}>
         {disabled ? 'Starting…' : 'Create session'}

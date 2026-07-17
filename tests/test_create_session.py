@@ -250,6 +250,7 @@ class TestCreateSessionRoute:
         assert body["task"]["id_"]
         assert body["tools"] == []  # no tools registered on the builder
         assert body["skills"] == []  # no skills discoverable in this cwd
+        assert body["model"] is None  # _MockBaseLLM exposes no `.model`
         assert body["need"] == "next"
 
     def test_blank_task_returns_422(
@@ -375,6 +376,35 @@ class TestCreateSessionResponseTools:
         session = await service.create_session_from_config(task=_HAILSTONE_TASK)
 
         assert set(session.agent.tools_registry) == {"add_one"}
+
+
+class TestCreateSessionResponseModel:
+    """``CreateSessionResponse.model`` is a best-effort read of the
+    agent's backbone LLM (mirrors ``SessionConfig.model``'s rationale --
+    ``BaseLLM`` has no generic ``model`` attribute, only concrete
+    implementations like ``OllamaLLM`` do)."""
+
+    def test_llm_with_no_model_attribute_returns_none(
+        self,
+        agent_builder: LLMAgentBuilder,
+    ) -> None:
+        """``_MockBaseLLM`` exposes no ``.model`` -> ``None``, not an error."""
+        client = _client(SessionService(agent_builder=agent_builder))
+
+        response = client.post("/api/sessions", json={"task": _HAILSTONE_TASK})
+
+        assert response.json()["model"] is None
+
+    def test_llm_with_model_attribute_surfaces_it(self) -> None:
+        """A concrete LLM's ``.model`` string reaches the response."""
+        llm = _MockBaseLLM()
+        llm.model = "qwen3:14b"  # type: ignore[attr-defined]
+        builder = LLMAgentBuilder(llm=llm)
+        client = _client(SessionService(agent_builder=builder))
+
+        response = client.post("/api/sessions", json={"task": _HAILSTONE_TASK})
+
+        assert response.json()["model"] == "qwen3:14b"
 
 
 class TestCreateSessionFromConfigSkills:

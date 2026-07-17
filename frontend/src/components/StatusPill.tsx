@@ -25,7 +25,7 @@ interface StatusPillProps {
 }
 
 /** A small, information-dense status indicator for the timeline's
- * domain cards (overseer/worker/pending-operation) -- deliberately
+ * domain cards (decision/result/pending-operation) -- deliberately
  * not just a bare shadcn `Badge`, per #22's "not shadcn" visual
  * language for this part of the UI. */
 function StatusPill({

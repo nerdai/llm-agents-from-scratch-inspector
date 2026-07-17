@@ -14,24 +14,24 @@ import type {
 /** A normalized, serializable view of a failed request (see `ApiError`). */
 export type ApiErrorInfo = Pick<ApiError, 'status' | 'detail'>
 
-/** One rendered card in the timeline -- either an overseer call
- * (`get_next_step`) or a worker call (`run_step`). */
+/** One rendered card in the timeline -- either a decision
+ * (`get_next_step`) or a result (`run_step`). */
 export type TimelineEntry =
   | {
-      kind: 'overseer'
+      kind: 'decision'
       id: string
       outcome: 'next_step'
       decision: NextStepDecisionOut
       step: TaskStepOut
     }
   | {
-      kind: 'overseer'
+      kind: 'decision'
       id: string
       outcome: 'final_result'
       result: TaskResultOut
     }
   | {
-      kind: 'worker'
+      kind: 'result'
       id: string
       result: TaskStepResultOut
       toolCalls: ToolCallTraceOut[]
@@ -43,6 +43,11 @@ export interface SessionState {
   task: TaskOut | null
   tools: string[]
   skills: SkillOut[]
+  /** Best-effort backbone LLM identifier -- `CreateSessionResponse.model`
+   * live, or `SessionStateResponse.config.model` on rehydration; `null`
+   * whenever the discovered LLM doesn't expose one (see the backend's
+   * `SessionConfig.model` docstring). */
+  model: string | null
   /** The session lifecycle's server-authoritative state, or `null`
    * before a session exists. */
   need: Need | null
@@ -79,6 +84,7 @@ export const initialSessionState: SessionState = {
   task: null,
   tools: [],
   skills: [],
+  model: null,
   need: null,
   busy: false,
   timeline: [],

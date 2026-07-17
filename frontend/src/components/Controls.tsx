@@ -13,18 +13,14 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import type { Need } from '../api/types'
-import RolloutDrawer from './RolloutDrawer'
 
 interface ControlsProps {
   need: Need | null
   busy: boolean
-  sessionId: string | null
   /** Whether `need === 'done'` was reached via approval (a real
    * `TaskResult` exists) rather than an abort -- distinguishes "Task
    * complete" from "Aborted" in the phase badge below. */
   isCompleted: boolean
-  onGetNextStep: () => void
-  onRunStep: () => void
   onAbort: () => void
 }
 
@@ -35,17 +31,7 @@ const PHASE_LABEL: Record<Need, string> = {
   done: 'Task complete',
 }
 
-function Controls({
-  need,
-  busy,
-  sessionId,
-  isCompleted,
-  onGetNextStep,
-  onRunStep,
-  onAbort,
-}: ControlsProps) {
-  const canNext = need === 'next' && !busy
-  const canRun = need === 'run' && !busy
+function Controls({ need, busy, isCompleted, onAbort }: ControlsProps) {
   // Mirrors useSession's own abort() gate (`need !== 'done' && !busy`),
   // so the button's enabled state never lies about what a click would
   // actually do.
@@ -69,57 +55,34 @@ function Controls({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-3.5">
-      <div className="flex gap-2.5">
-        <Button
-          type="button"
-          variant="secondary"
-          disabled={!canNext}
-          onClick={onGetNextStep}
-          className="font-mono"
-        >
-          get_next_step()
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          disabled={!canRun}
-          onClick={onRunStep}
-          className="font-mono"
-        >
-          run_step(step)
-        </Button>
-      </div>
-      <RolloutDrawer sessionId={sessionId} />
+    <div className="flex items-center gap-3.5">
       <Badge variant="outline" className="font-mono">
         {busy ? 'Calling backend…' : (phaseLabel ?? '')}
       </Badge>
-      <div className="ml-auto">
-        <AlertDialog open={abortOpen} onOpenChange={setAbortOpen}>
-          <AlertDialogTrigger
-            render={
-              <Button type="button" variant="outline" disabled={!canAbort} />
-            }
-          >
-            Abort
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Abort this session?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Ends the session immediately without a result. This can&apos;t
-                be undone.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction variant="destructive" onClick={handleAbort}>
-                Abort
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </div>
+      <AlertDialog open={abortOpen} onOpenChange={setAbortOpen}>
+        <AlertDialogTrigger
+          render={
+            <Button type="button" variant="destructive" disabled={!canAbort} />
+          }
+        >
+          Abort
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Abort this session?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Ends the session immediately without a result. This can&apos;t be
+              undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={handleAbort}>
+              Abort
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

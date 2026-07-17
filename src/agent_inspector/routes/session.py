@@ -107,10 +107,15 @@ async def create_session(
         ) from e
 
     task = session.handler.task
+    # Best-effort, same as `SessionConfig.model`'s docstring: `BaseLLM`
+    # has no generic `model` attribute, only concrete implementations
+    # (e.g. `OllamaLLM`) do.
+    model = getattr(session.agent.llm, "model", None)
     return CreateSessionResponse(
         session_id=session.id,
         task=TaskOut(id_=task.id_, instruction=task.instruction),
         tools=list(session.agent.tools_registry.keys()),
+        model=model if isinstance(model, str) else None,
         skills=[
             SkillOut(
                 name=name,
