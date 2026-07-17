@@ -56,7 +56,6 @@ test('create, next-step, run-step, edit step + result, approve', async ({
   await clickRunStep(page)
   await expect(phaseBadge(page)).toHaveText('Awaiting get_next_step()')
   await expect(page.getByText('next_number({"x":6})')).toBeVisible()
-  await expect(page.getByText('step 1', { exact: true })).toBeVisible()
 
   // 4. Edit the step's result before the next get_next_step() call --
   // forcing it to "1" (the Hailstone sequence's fixed point) short-

@@ -8,7 +8,6 @@ import StatusPill from './StatusPill'
 interface StepResultCardProps {
   result: TaskStepResultOut
   toolCalls: ToolCallTraceOut[]
-  stepCounter: number
   /** True exactly when this is the most recent result entry and
    * `need === 'next' && !busy` -- see `Timeline`. */
   editable: boolean
@@ -71,7 +70,6 @@ function useTypewriterReveal(text: string, msPerChar = 6): string {
 function StepResultCard({
   result,
   toolCalls,
-  stepCounter,
   editable,
   busy,
   onSaveResult,
@@ -86,9 +84,6 @@ function StepResultCard({
         <code className="rounded bg-amber-500/10 px-1.5 py-0.5 font-mono text-foreground">
           run_step(step)
         </code>
-        <span className="font-mono text-[11px] font-semibold text-muted-foreground">
-          step {stepCounter}
-        </span>
         <StatusPill tone="amber" className="ml-auto">
           done
         </StatusPill>
