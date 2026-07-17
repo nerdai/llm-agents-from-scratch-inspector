@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import type { CreateSessionRequest } from '../api/types'
 import type { SessionState } from '../session/types'
 import TaskForm from './TaskForm'
+import TemplatesSection from './TemplatesSection'
 
 interface ConfigRailProps {
   state: SessionState
@@ -25,6 +26,12 @@ function SectionLabel({ children }: { children: ReactNode }) {
  * post-session. Rendered by `AppShell`'s `rail` slot -- see that
  * component for the surrounding app-bar/aside/main chrome.
  *
+ * `TemplatesSection` renders in both branches -- the framework's
+ * prompt templates aren't session-scoped (shared across every
+ * session's agent, same as before this lived in the app bar as
+ * `TemplatesDrawer`), so it's available whether or not a session
+ * exists yet, same as it always was.
+ *
  * Deliberately does not own the timeline, the approve/reject gate, or
  * error toasts (#22/#23), and does not rehydrate from a reload (#24).
  */
@@ -39,6 +46,9 @@ function ConfigRail({ state, onCreate, onReset }: ConfigRailProps) {
     return (
       <div className="flex flex-col gap-5 p-4.5">
         <TaskForm onCreate={onCreate} disabled={state.busy} />
+        <div className="border-t pt-4.5">
+          <TemplatesSection />
+        </div>
       </div>
     )
   }
@@ -55,6 +65,17 @@ function ConfigRail({ state, onCreate, onReset }: ConfigRailProps) {
       <div className="flex flex-col gap-1.5">
         <SectionLabel>Task</SectionLabel>
         <p className="text-sm">{state.task?.instruction}</p>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <SectionLabel>Model</SectionLabel>
+        {state.model ? (
+          <Badge variant="outline" className="w-fit font-mono">
+            {state.model}
+          </Badge>
+        ) : (
+          <span className="text-xs text-muted-foreground">(unknown)</span>
+        )}
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -112,6 +133,10 @@ function ConfigRail({ state, onCreate, onReset }: ConfigRailProps) {
           Start new session
         </Button>
       )}
+
+      <div className="border-t pt-4.5">
+        <TemplatesSection />
+      </div>
     </div>
   )
 }

@@ -86,6 +86,7 @@ export function sessionReducer(
         task: res.task,
         tools: res.tools,
         skills: res.skills,
+        model: res.model,
         need: res.need,
       }
     }
@@ -118,6 +119,7 @@ export function sessionReducer(
         // `RehydratedSessionView` renders those names separately
         // instead of forcing them into `SkillOut[]`).
         tools: res.config.tools,
+        model: res.config.model,
         rehydrated: true,
         rollout: res.rollout,
         toolCallHistory: res.tool_call_history,

@@ -92,6 +92,7 @@ export interface CreateSessionResponse {
   task: TaskOut
   tools: string[]
   skills: SkillOut[]
+  model: string | null
   need: Need
 }
 

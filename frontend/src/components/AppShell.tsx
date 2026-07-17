@@ -5,11 +5,6 @@ interface AppShellProps {
   /** The config rail's contents (#21 -- `ConfigRail`). Rendered inside
    * a fixed-width, independently-scrollable `<aside>`. */
   rail: ReactNode
-  /** Optional extra app-bar controls, rendered before the Ollama
-   * status chip -- e.g. #23's `TemplatesDrawer` trigger, which needs
-   * to be visible/usable before any session exists (so it can't live
-   * in the rail or `<main>`, both of which are session-scoped). */
-  headerActions?: ReactNode
   /** Optional content pinned to the top of the main content area,
    * above the independently-scrollable `children` below it -- e.g.
    * `Controls` (get_next_step()/run_step()/abort), so it stays
@@ -46,13 +41,7 @@ interface AppShellProps {
  * panel like `RolloutPanel` can stay open without covering or
  * shrinking the timeline's own scroll position.
  */
-function AppShell({
-  rail,
-  headerActions,
-  mainHeader,
-  sidePanel,
-  children,
-}: AppShellProps) {
+function AppShell({ rail, mainHeader, sidePanel, children }: AppShellProps) {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
       <header className="flex h-14 flex-none items-center gap-3.5 border-b bg-card px-5">
@@ -68,7 +57,6 @@ function AppShell({
           SupervisedTaskHandler
         </span>
         <div className="flex-1" />
-        {headerActions}
         <OllamaStatusChip />
       </header>
 
@@ -78,13 +66,13 @@ function AppShell({
         </aside>
         <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {mainHeader && (
-            <div className="flex-none border-b bg-background px-5 py-3.5">
+            <div className="flex-none border-b bg-background px-9 py-3.5">
               {mainHeader}
             </div>
           )}
           <div className="flex min-h-0 flex-1">
             <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
-              <div className="flex flex-col gap-4.5 px-5 py-8 pb-16">
+              <div className="flex flex-col gap-4.5 px-9 py-8 pb-16">
                 {children}
               </div>
             </div>

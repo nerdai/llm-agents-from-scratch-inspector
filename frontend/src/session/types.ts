@@ -43,6 +43,11 @@ export interface SessionState {
   task: TaskOut | null
   tools: string[]
   skills: SkillOut[]
+  /** Best-effort backbone LLM identifier -- `CreateSessionResponse.model`
+   * live, or `SessionStateResponse.config.model` on rehydration; `null`
+   * whenever the discovered LLM doesn't expose one (see the backend's
+   * `SessionConfig.model` docstring). */
+  model: string | null
   /** The session lifecycle's server-authoritative state, or `null`
    * before a session exists. */
   need: Need | null
@@ -79,6 +84,7 @@ export const initialSessionState: SessionState = {
   task: null,
   tools: [],
   skills: [],
+  model: null,
   need: null,
   busy: false,
   timeline: [],

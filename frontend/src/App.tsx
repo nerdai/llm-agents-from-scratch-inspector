@@ -5,7 +5,6 @@ import AppShell from './components/AppShell'
 import ConfigRail from './components/ConfigRail'
 import Controls from './components/Controls'
 import Timeline from './components/Timeline'
-import TemplatesDrawer from './components/TemplatesDrawer'
 import RehydratedSessionView from './components/RehydratedSessionView'
 import RolloutPanel from './components/RolloutPanel'
 import { useSession } from './session/useSession'
@@ -13,27 +12,26 @@ import { useSession } from './session/useSession'
 /**
  * Agent Inspector -- full-viewport app-bar layout (#21): a persistent
  * config rail (task input, Ollama status, skills scope/explicit-only,
- * discovered tools/skills) alongside a main content area that drives
- * one `SupervisedTaskHandler` call at a time.
+ * discovered tools/skills/model/prompt templates) alongside a main
+ * content area that drives one `SupervisedTaskHandler` call at a time.
  *
  * `AppShell` owns only the chrome (app bar + rail + pinned main header
  * + side panel + scrollable main slot); `ConfigRail` owns the rail's
- * contents, including `TaskForm` pre-session. `Controls` (phase badge,
- * abort) is pinned via `AppShell`'s `mainHeader` slot, so it stays
- * reachable without scrolling back up through a long `Timeline`. The
- * get_next_step()/run_step() action pair isn't pinned, though --
- * `Timeline` renders it inline, beside whichever step is current, via
- * `StepActionButtons` (#22's redesign, including the approve/reject
- * gate and inline editing) -- which, along with reload rehydration via
- * `RehydratedSessionView` (#24) when one was restored from
- * `?session=<id>`, renders in the scrollable `children` slot.
- * `RolloutPanel` lives in `AppShell`'s `sidePanel` slot -- a persistent
- * collapsible panel beside the timeline rather than an overlay drawer,
- * so it can stay open without covering the cards it's next to. #23's
- * `TemplatesDrawer` trigger lives in the app bar itself (`AppShell`'s
- * `headerActions` slot) since it needs to be usable before any
- * session exists; its Sonner `<Toaster />` replaces the old inline
- * error banner.
+ * contents, including `TaskForm` pre-session and `TemplatesSection` in
+ * both branches (prompt templates aren't session-scoped). `Controls`
+ * (phase badge, abort) is pinned via `AppShell`'s `mainHeader` slot,
+ * so it stays reachable without scrolling back up through a long
+ * `Timeline`. The get_next_step()/run_step() action pair isn't
+ * pinned, though -- `Timeline` renders it inline, beside whichever
+ * step is current, via `StepActionButtons` (#22's redesign, including
+ * the approve/reject gate and inline editing) -- which, along with
+ * reload rehydration via `RehydratedSessionView` (#24) when one was
+ * restored from `?session=<id>`, renders in the scrollable `children`
+ * slot. `RolloutPanel` lives in `AppShell`'s `sidePanel` slot -- a
+ * persistent collapsible panel beside the timeline rather than an
+ * overlay drawer, so it can stay open without covering the cards it's
+ * next to. Sonner's `<Toaster />` replaces the old inline error
+ * banner (#23).
  */
 function App() {
   const {
@@ -67,7 +65,6 @@ function App() {
   return (
     <AppShell
       rail={<ConfigRail state={state} onCreate={start} onReset={reset} />}
-      headerActions={<TemplatesDrawer />}
       mainHeader={
         hasSession && (
           <Controls

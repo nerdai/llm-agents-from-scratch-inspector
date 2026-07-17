@@ -8,6 +8,35 @@ interface RolloutPanelProps {
   sessionId: string | null
 }
 
+const STEP_START = '=== Task Step Start ==='
+const STEP_END = '=== Task Step End ==='
+
+/**
+ * Splits the raw rollout text into one chunk per `run_step()` call --
+ * the framework wraps each call's formatted chat history in its own
+ * `=== Task Step Start/End ===` markers (`_format_step_for_rollout` in
+ * `llm_agents_from_scratch`'s `agent/llm_agent.py`), so splitting on
+ * those markers lines up exactly with the app's own "Step N"
+ * numbering elsewhere in the UI. Falls back to a single chunk of the
+ * raw text if the markers aren't found (a format this doesn't
+ * recognize) so nothing is silently dropped; returns no chunks at all
+ * for an empty rollout (nothing to show yet).
+ */
+function splitRolloutSteps(rollout: string): string[] {
+  const steps: string[] = []
+  let cursor = 0
+  while (true) {
+    const start = rollout.indexOf(STEP_START, cursor)
+    if (start === -1) break
+    const end = rollout.indexOf(STEP_END, start)
+    if (end === -1) break
+    steps.push(rollout.slice(start + STEP_START.length, end).trim())
+    cursor = end + STEP_END.length
+  }
+  if (steps.length > 0) return steps
+  return rollout.trim() ? [rollout.trim()] : []
+}
+
 /**
  * The session's full rollout text, as a persistent right-side panel
  * spanning the main content area's full height rather than an overlay
@@ -26,6 +55,7 @@ interface RolloutPanelProps {
 function RolloutPanel({ sessionId }: RolloutPanelProps) {
   const [open, setOpen] = useState(false)
   const { data, isLoading, isError, error, refetch } = useRollout(sessionId)
+  const steps = data ? splitRolloutSteps(data.rollout) : []
 
   const toggle = () => {
     const nextOpen = !open
@@ -73,7 +103,17 @@ function RolloutPanel({ sessionId }: RolloutPanelProps) {
               {error instanceof Error ? `: ${error.message}` : '.'}
             </p>
           )}
-          {data && <HighlightedBlock code={data.rollout} />}
+          {data && steps.length === 0 && (
+            <p className="text-sm text-muted-foreground">No steps yet.</p>
+          )}
+          {steps.map((step, i) => (
+            <div key={i} className="flex flex-col gap-1.5">
+              <span className="text-[10.5px] font-semibold tracking-wide text-muted-foreground uppercase">
+                Step {i + 1}
+              </span>
+              <HighlightedBlock code={step} />
+            </div>
+          ))}
         </div>
       </div>
     </div>
