@@ -1,11 +1,10 @@
 import { useState } from 'react'
-import type { FormEvent, KeyboardEvent, ReactNode } from 'react'
+import type { FormEvent, ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { cn } from '@/lib/utils'
-import type { CreateSessionRequest, SkillScope } from '../api/types'
+import type { CreateSessionRequest } from '../api/types'
+import SkillsConfigFields from './SkillsConfigFields'
+import type { SkillsConfig } from './useSkillsConfig'
 
 interface TaskFormProps {
   onCreate: (req: CreateSessionRequest) => void
@@ -15,14 +14,18 @@ interface TaskFormProps {
    * `''` otherwise. Read once, on mount -- `TaskForm` owns `task` as
    * local edit state from then on, same as every other field here. */
   initialTask: string
+  /** One `useSkillsConfig()` instance owned by `ConfigRail` (#88) --
+   * shared with its post-completion view so a scope/explicit-only
+   * choice made while looking at a just-finished session survives
+   * into the next one instead of being discarded on "Start new
+   * session". */
+  skillsConfig: SkillsConfig
   /** Rendered between the form fields and the "Create session" button
    * -- e.g. `TemplatesSection`, so "Create session" stays the very
    * last thing in the rail, matching where "Start new session" sits
    * post-session (see `ConfigRail`). */
   children?: ReactNode
 }
-
-const SCOPE_OPTIONS: readonly SkillScope[] = ['user', 'project']
 
 /**
  * `POST /api/sessions`'s variable fields are `task`, `skills_scopes`,
@@ -38,49 +41,18 @@ function TaskForm({
   onCreate,
   disabled,
   initialTask,
+  skillsConfig,
   children,
 }: TaskFormProps) {
   const [task, setTask] = useState(initialTask)
-  const [scopes, setScopes] = useState<SkillScope[]>([])
-  const [explicitSkills, setExplicitSkills] = useState<string[]>([])
-  const [tagDraft, setTagDraft] = useState('')
+  const { scopes, commitPendingDraft } = skillsConfig
 
   const canSubmit = task.trim().length > 0 && !disabled
-
-  const toggleScope = (scope: SkillScope) => {
-    setScopes((prev) =>
-      prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope],
-    )
-  }
-
-  const commitTag = (draft: string) => {
-    const name = draft.trim()
-    if (!name) return
-    setExplicitSkills((prev) => (prev.includes(name) ? prev : [...prev, name]))
-    setTagDraft('')
-  }
-
-  const removeTag = (name: string) => {
-    setExplicitSkills((prev) => prev.filter((s) => s !== name))
-  }
-
-  const handleTagKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' || e.key === ',') {
-      e.preventDefault()
-      commitTag(tagDraft)
-    } else if (e.key === 'Backspace' && tagDraft === '') {
-      setExplicitSkills((prev) => prev.slice(0, -1))
-    }
-  }
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!canSubmit) return
-    const pending = tagDraft.trim()
-    const skills =
-      pending && !explicitSkills.includes(pending)
-        ? [...explicitSkills, pending]
-        : explicitSkills
+    const skills = commitPendingDraft()
     onCreate({
       task: task.trim(),
       skills_scopes: scopes.length > 0 ? scopes : undefined,
@@ -109,84 +81,7 @@ function TaskForm({
         </span>
       </label>
 
-      <div className="flex flex-col gap-1.5">
-        <span className="text-[10.5px] font-semibold tracking-wide text-muted-foreground uppercase">
-          Skills scope
-        </span>
-        <div className="flex gap-1.5">
-          {SCOPE_OPTIONS.map((scope) => {
-            const active = scopes.includes(scope)
-            return (
-              <button
-                key={scope}
-                type="button"
-                disabled={disabled}
-                onClick={() => toggleScope(scope)}
-                aria-pressed={active}
-                className={cn(
-                  'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 font-mono text-[11px] font-semibold tracking-wide uppercase transition-colors',
-                  active
-                    ? 'border-primary/45 bg-primary/10 text-primary'
-                    : 'border-border bg-transparent text-muted-foreground hover:border-foreground/20',
-                  disabled && 'pointer-events-none opacity-50',
-                )}
-              >
-                <span
-                  className={cn(
-                    'size-1.5 rounded-full',
-                    active ? 'bg-primary' : 'bg-muted-foreground/40',
-                  )}
-                />
-                {scope}
-              </button>
-            )
-          })}
-        </div>
-        <span className="text-[11px] text-muted-foreground">
-          Optional -- omit to use the agent&apos;s default discovery scopes.
-        </span>
-      </div>
-
-      <label className="flex flex-col gap-1.5" htmlFor="explicit-skills-input">
-        <span className="text-[10.5px] font-semibold tracking-wide text-muted-foreground uppercase">
-          Explicit-only skills
-        </span>
-        <div
-          className={cn(
-            'flex flex-wrap items-center gap-1.5 rounded-lg border border-input px-2 py-1.5',
-            disabled && 'opacity-50',
-          )}
-        >
-          {explicitSkills.map((name) => (
-            <Badge key={name} variant="secondary" className="font-mono">
-              {name}
-              <button
-                type="button"
-                onClick={() => removeTag(name)}
-                disabled={disabled}
-                aria-label={`Remove ${name}`}
-                className="ml-1 leading-none text-muted-foreground hover:text-foreground"
-              >
-                ×
-              </button>
-            </Badge>
-          ))}
-          <Input
-            id="explicit-skills-input"
-            value={tagDraft}
-            onChange={(e) => setTagDraft(e.target.value)}
-            onKeyDown={handleTagKeyDown}
-            onBlur={() => commitTag(tagDraft)}
-            disabled={disabled}
-            placeholder={explicitSkills.length === 0 ? 'skill-name…' : ''}
-            className="h-6 min-w-20 flex-1 border-none px-1 shadow-none focus-visible:ring-0"
-          />
-        </div>
-        <span className="text-[11px] text-muted-foreground">
-          Skill names, by name -- press Enter or comma to add. Hidden from the
-          model&apos;s visible catalog, but still invokable by name.
-        </span>
-      </label>
+      <SkillsConfigFields {...skillsConfig} disabled={disabled} />
 
       {children}
 

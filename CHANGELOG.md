@@ -8,7 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
-- ...
+### Added
+
+- feat: discover an optional `default_task` from the launched script, mirroring the `agent_builder` convention -- pre-fills the UI's task field at launch instead of a value hardcoded in the frontend (#87)
+- feat: surface the discovered agent's Model/Tools before any session exists via new `GET /api/agent-info` -- unlike Skills, these are fixed by the builder itself, not dependent on per-session config (#87)
+
+### Changed
+
+- fix: Skills Scope/Explicit-only Skills fields reappear (editable) once a session is done, carrying an operator's choice forward into "Start new session" instead of discarding it (#88)
+- fix: the Task field becomes editable again once a session is done, seeded from that session's own task, also carrying forward into the next session (#88)
 
 ## [0.1.1] - 2026-07-18
 
