@@ -41,19 +41,20 @@ interface AppShellProps {
 function AppShell({ rail, headerEnd, sidePanel, children }: AppShellProps) {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
-      <header className="flex h-14 flex-none items-center gap-3.5 border-b bg-card px-5">
-        <div className="flex items-center gap-2">
+      <header className="grid h-14 flex-none grid-cols-[1fr_auto_1fr] items-center gap-3.5 border-b bg-card px-5">
+        <div className="flex items-center justify-self-start gap-2">
           <img src="/favicon.svg" alt="" className="size-6.5 rounded-md" />
           <span className="text-[15px] font-bold tracking-tight">
             Agent Inspector
           </span>
         </div>
-        <span className="font-mono text-[11px] font-semibold text-muted-foreground">
+        <span className="justify-self-center font-mono text-[11px] font-semibold text-muted-foreground">
           SupervisedTaskHandler
         </span>
-        <div className="flex-1" />
-        {headerEnd}
-        <OllamaStatusChip />
+        <div className="flex items-center justify-self-end gap-3.5">
+          {headerEnd}
+          <OllamaStatusChip />
+        </div>
       </header>
 
       <div className="flex min-h-0 flex-1">
