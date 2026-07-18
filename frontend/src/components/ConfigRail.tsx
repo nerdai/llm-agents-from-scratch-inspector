@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
 import { useAgentInfo } from '../api/hooks'
 import type { CreateSessionRequest } from '../api/types'
 import type { SessionState } from '../session/types'
@@ -122,6 +124,19 @@ function ToolsField({ tools }: { tools: string[] }) {
  * was chosen survives "Start new session" (`onReset`) into the fresh
  * `TaskForm` that mounts afterward, instead of being discarded.
  *
+ * The Task field gets the same treatment (#90): read-only `<p>` while
+ * a session is in progress, but an editable `Textarea` once `isDone`
+ * -- seeded from that session's own `state.task.instruction` the
+ * moment it finishes (`knownIsDone`'s render-time resync below, the
+ * same "adjust state when a prop changes" idiom `Timeline.tsx` uses,
+ * rather than an effect-driven `setState` this repo's lint config
+ * flags) -- so an operator can tweak it before "Start new session"
+ * instead of only being able to retype it from scratch.
+ * `hasFinishedSession` distinguishes "no session has ever finished
+ * yet" (still defer to the script's `default_task`) from "at least
+ * one has" (defer to whatever's in that editable box now, even if
+ * emptied).
+ *
  * Deliberately does not own the timeline, the approve/reject gate, or
  * error toasts (#22/#23), and does not rehydrate from a reload (#24).
  */
@@ -141,6 +156,17 @@ function ConfigRail({ state, onCreate, onReset }: ConfigRailProps) {
     error: agentInfoError,
   } = useAgentInfo()
   const skillsConfig = useSkillsConfig()
+
+  const [knownIsDone, setKnownIsDone] = useState(isDone)
+  const [hasFinishedSession, setHasFinishedSession] = useState(false)
+  const [nextTaskDraft, setNextTaskDraft] = useState('')
+  if (isDone !== knownIsDone) {
+    setKnownIsDone(isDone)
+    if (isDone) {
+      setHasFinishedSession(true)
+      setNextTaskDraft(state.task?.instruction ?? '')
+    }
+  }
 
   if (!hasSession) {
     if (agentInfoLoading) {
@@ -165,7 +191,11 @@ function ConfigRail({ state, onCreate, onReset }: ConfigRailProps) {
         <TaskForm
           onCreate={onCreate}
           disabled={state.busy}
-          initialTask={agentInfo?.default_task?.instruction ?? ''}
+          initialTask={
+            hasFinishedSession
+              ? nextTaskDraft
+              : (agentInfo?.default_task?.instruction ?? '')
+          }
           skillsConfig={skillsConfig}
         >
           <div className="flex flex-col gap-3.5 border-t pt-4.5">
@@ -190,7 +220,17 @@ function ConfigRail({ state, onCreate, onReset }: ConfigRailProps) {
 
       <div className="flex flex-col gap-1.5">
         <SectionLabel>Task</SectionLabel>
-        <p className="text-sm">{state.task?.instruction}</p>
+        {isDone ? (
+          <Textarea
+            id="task-input"
+            value={nextTaskDraft}
+            onChange={(e) => setNextTaskDraft(e.target.value)}
+            rows={4}
+            className="text-sm"
+          />
+        ) : (
+          <p className="text-sm">{state.task?.instruction}</p>
+        )}
       </div>
 
       {isDone && <SkillsConfigFields {...skillsConfig} disabled={state.busy} />}
