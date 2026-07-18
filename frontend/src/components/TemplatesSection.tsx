@@ -49,15 +49,15 @@ function TemplatesSection() {
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger className="group/templates flex w-full items-center gap-1.5 text-left">
+        <span className="text-[10.5px] font-semibold tracking-wide text-muted-foreground uppercase">
+          Templates
+        </span>
         <ChevronDown
           className={cn(
             'size-3 flex-none text-muted-foreground transition-transform',
             open && 'rotate-180',
           )}
         />
-        <span className="text-[10.5px] font-semibold tracking-wide text-muted-foreground uppercase">
-          Templates
-        </span>
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="flex flex-col gap-3 pt-2">

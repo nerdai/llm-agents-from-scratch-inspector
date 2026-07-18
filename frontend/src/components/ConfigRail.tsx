@@ -24,7 +24,11 @@ function SectionLabel({ children }: { children: ReactNode }) {
  * grouping Model/Tools/Skills/Templates -- so nested subsections read
  * as belonging to it rather than sitting as equally-weighted peers. */
 function GroupLabel({ children }: { children: ReactNode }) {
-  return <span className="text-xs font-bold tracking-tight">{children}</span>
+  return (
+    <span className="text-xs font-bold tracking-tight text-muted-foreground">
+      {children}
+    </span>
+  )
 }
 
 /**
@@ -81,7 +85,7 @@ function ConfigRail({ state, onCreate, onReset }: ConfigRailProps) {
         <p className="text-sm">{state.task?.instruction}</p>
       </div>
 
-      <div className="flex flex-col gap-3.5">
+      <div className="flex flex-col gap-3.5 border-t pt-4.5">
         <GroupLabel>LLM Agent</GroupLabel>
 
         <div className="flex flex-col gap-1.5">
