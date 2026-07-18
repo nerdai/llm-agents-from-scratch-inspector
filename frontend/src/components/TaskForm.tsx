@@ -181,7 +181,7 @@ function TaskForm({ onCreate, disabled, children }: TaskFormProps) {
         </span>
       </label>
 
-      {children && <div className="border-t pt-4.5">{children}</div>}
+      {children}
 
       <Button type="submit" disabled={!canSubmit}>
         {disabled ? 'Starting…' : 'Create session'}
