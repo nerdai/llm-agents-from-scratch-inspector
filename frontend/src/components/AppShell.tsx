@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import ModeToggle from './ModeToggle'
 import OllamaStatusChip from './OllamaStatusChip'
 
 interface AppShellProps {
@@ -43,7 +44,7 @@ function AppShell({ rail, headerEnd, sidePanel, children }: AppShellProps) {
     <div className="flex h-screen flex-col overflow-hidden bg-background">
       <header className="grid h-14 flex-none grid-cols-[1fr_auto_1fr] items-center gap-3.5 border-b bg-card px-5">
         <div className="flex items-center justify-self-start gap-2">
-          <img src="/favicon.svg" alt="" className="size-6.5 rounded-md" />
+          <img src="/logo.svg" alt="" className="size-6.5" />
           <span className="text-[15px] font-bold tracking-tight">
             Agent Inspector
           </span>
@@ -54,6 +55,7 @@ function AppShell({ rail, headerEnd, sidePanel, children }: AppShellProps) {
         <div className="flex items-center justify-self-end gap-3.5">
           {headerEnd}
           <OllamaStatusChip />
+          <ModeToggle />
         </div>
       </header>
 
