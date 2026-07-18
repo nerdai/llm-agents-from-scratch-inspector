@@ -14,10 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- feat: wire up a real light/dark toggle (`ModeToggle` + next-themes `ThemeProvider`) -- previously-dead scaffolding from the earlier theme overhaul that nothing ever activated (#81)
 - docs: document `pip install` + bring-your-own-`agent_builder` usage in README (#77)
 
 ### Changed
 
+- fix: group Model/Tools/Skills/Templates under an "LLM Agent" heading in the config rail -- templates are scoped to the discovered agent exactly like tools/model/skills (`LLMAgentBuilder.with_templates()`), so the old separator between Skills and Templates misrepresented them as something separate (#83)
+- fix: use `llm-agents-from-scratch`'s dedicated `logo.svg` (dark-mode-aware) as the app-bar logo, replacing the static favicon-based badge; keep `favicon.svg` as the browser-tab icon (#81)
 - fix: recenter the favicon glyph within its square canvas; center `SupervisedTaskHandler` in the app bar (#79)
 - fix: use `llm-agents-from-scratch`'s favicon as the browser-tab icon and app-bar logo, replacing the placeholder purple "A" badge (#78)
 
