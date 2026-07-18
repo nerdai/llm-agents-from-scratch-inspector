@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { useAgentInfo } from '../api/hooks'
 import type { CreateSessionRequest } from '../api/types'
 import type { SessionState } from '../session/types'
 import TaskForm from './TaskForm'
@@ -31,6 +32,46 @@ function GroupLabel({ children }: { children: ReactNode }) {
   )
 }
 
+/** Shared by both branches below: `state.model`/`state.tools`
+ * post-session, `useAgentInfo()`'s `model`/`tools` pre-session (#86) --
+ * same fields, same "LLM Agent" grouping, different source now that
+ * they're readable before a session exists too. */
+function ModelField({ model }: { model: string | null }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <SectionLabel>Model</SectionLabel>
+      {model ? (
+        <Badge variant="outline" className="w-fit font-mono">
+          {model}
+        </Badge>
+      ) : (
+        <span className="text-xs text-muted-foreground">(unknown)</span>
+      )}
+    </div>
+  )
+}
+
+function ToolsField({ tools }: { tools: string[] }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <SectionLabel>Tools</SectionLabel>
+      {tools.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5">
+          {tools.map((tool) => (
+            <Badge key={tool} variant="outline" className="font-mono">
+              {tool}
+            </Badge>
+          ))}
+        </div>
+      ) : (
+        <span className="text-xs text-muted-foreground">
+          (no tools discovered)
+        </span>
+      )}
+    </div>
+  )
+}
+
 /**
  * The persistent config sidebar (#21): task input pre-session, then a
  * read-only reflection of what the discovered agent actually has
@@ -51,6 +92,18 @@ function GroupLabel({ children }: { children: ReactNode }) {
  * land in the same spot with the same styling rather than one living
  * mid-form.
  *
+ * Model/Tools render in both branches too, same "LLM Agent" grouping
+ * -- `useAgentInfo()` (#86) surfaces the discovered builder's
+ * model/tools/default_task pre-session (they're fixed by the builder
+ * itself, unlike skills, which need a session to know the real
+ * catalog), so the pre-session branch waits on that query before
+ * rendering `TaskForm`: `default_task`'s instruction is the field's
+ * *initial* value (`TaskForm` owns edits to it from then on), and
+ * there's no clean way to patch a mounted `<textarea>`'s value in
+ * only once the query resolves without either an effect-driven
+ * `setState` (this repo's lint config flags exactly that pattern) or
+ * a remount-via-`key` hack -- gating on `isLoading` sidesteps both.
+ *
  * Deliberately does not own the timeline, the approve/reject gate, or
  * error toasts (#22/#23), and does not rehydrate from a reload (#24).
  */
@@ -60,12 +113,32 @@ function ConfigRail({ state, onCreate, onReset }: ConfigRailProps) {
   // set) or abort (`completedResult` stays null) -- "Start new
   // session" should show either way, not just after approval.
   const isDone = state.need === 'done'
+  // Called unconditionally (rules of hooks) even though only the
+  // pre-session branch below needs it -- `hasSession` flips within
+  // this same component instance once a session is created.
+  const { data: agentInfo, isLoading: agentInfoLoading } = useAgentInfo()
 
   if (!hasSession) {
+    if (agentInfoLoading) {
+      return (
+        <div className="p-4.5 text-xs text-muted-foreground">
+          Loading agent info…
+        </div>
+      )
+    }
     return (
       <div className="flex flex-col gap-5 p-4.5">
-        <TaskForm onCreate={onCreate} disabled={state.busy}>
-          <TemplatesSection />
+        <TaskForm
+          onCreate={onCreate}
+          disabled={state.busy}
+          initialTask={agentInfo?.default_task?.instruction ?? ''}
+        >
+          <div className="flex flex-col gap-3.5 border-t pt-4.5">
+            <GroupLabel>LLM Agent</GroupLabel>
+            <ModelField model={agentInfo?.model ?? null} />
+            <ToolsField tools={agentInfo?.tools ?? []} />
+            <TemplatesSection />
+          </div>
         </TaskForm>
       </div>
     )
@@ -88,33 +161,8 @@ function ConfigRail({ state, onCreate, onReset }: ConfigRailProps) {
       <div className="flex flex-col gap-3.5 border-t pt-4.5">
         <GroupLabel>LLM Agent</GroupLabel>
 
-        <div className="flex flex-col gap-1.5">
-          <SectionLabel>Model</SectionLabel>
-          {state.model ? (
-            <Badge variant="outline" className="w-fit font-mono">
-              {state.model}
-            </Badge>
-          ) : (
-            <span className="text-xs text-muted-foreground">(unknown)</span>
-          )}
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <SectionLabel>Tools</SectionLabel>
-          {state.tools.length > 0 ? (
-            <div className="flex flex-wrap gap-1.5">
-              {state.tools.map((tool) => (
-                <Badge key={tool} variant="outline" className="font-mono">
-                  {tool}
-                </Badge>
-              ))}
-            </div>
-          ) : (
-            <span className="text-xs text-muted-foreground">
-              (no tools discovered)
-            </span>
-          )}
-        </div>
+        <ModelField model={state.model} />
+        <ToolsField tools={state.tools} />
 
         <div className="flex flex-col gap-1.5">
           <SectionLabel>Skills</SectionLabel>

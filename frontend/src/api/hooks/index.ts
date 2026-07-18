@@ -1,6 +1,7 @@
 export { useHealth } from './useHealth'
 export { useOllamaStatus } from './useOllamaStatus'
 export { useTemplates } from './useTemplates'
+export { useAgentInfo } from './useAgentInfo'
 export { useSessionState } from './useSessionState'
 export { useRollout } from './useRollout'
 export { useCreateSession } from './useCreateSession'

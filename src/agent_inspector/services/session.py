@@ -602,6 +602,7 @@ class SessionService:
         self,
         agent_builder: LLMAgentBuilder | None = None,
         store: SessionStore | None = None,
+        default_task: Task | None = None,
     ) -> None:
         """Initialize an empty SessionService.
 
@@ -610,7 +611,7 @@ class SessionService:
                 CLI-discovered builder (see ``discovery.py``) that
                 ``create_session_from_config`` calls ``.build()`` on
                 once per new session. ``None`` until ``deps.py``'s
-                ``configure_agent_builder`` wires one up at CLI launch
+                ``configure_entrypoint`` wires one up at CLI launch
                 time -- left optional (rather than required) so tests
                 that only exercise session lifecycle/need-machine
                 behavior (never session *creation*) can keep
@@ -623,10 +624,16 @@ class SessionService:
                 nothing about ``deps.py``'s
                 ``SessionService()`` construction needs to change to
                 pick up this default.
+            default_task (Task | None, optional): The script's optional
+                ``default_task`` (see ``discovery.py``), surfaced via
+                ``get_agent_info`` for the UI to pre-fill before any
+                session exists. ``None`` if the script didn't define
+                one.
         """
         self.store = store if store is not None else InMemorySessionStore()
         self._registry_lock = threading.Lock()
         self.agent_builder = agent_builder
+        self.default_task = default_task
 
     @staticmethod
     def _generate_session_id() -> str:
@@ -1524,3 +1531,57 @@ def get_templates() -> LLMAgentTemplates:
         LLMAgentTemplates: The framework's default templates.
     """
     return default_templates
+
+
+@dataclass(frozen=True)
+class AgentInfo:
+    """The discovered agent's static properties (see ``get_agent_info``)."""
+
+    model: str | None
+    tools: list[str]
+    default_task: Task | None
+
+
+def get_agent_info(session_service: SessionService) -> AgentInfo:
+    """Return the discovered agent's static properties (see #86).
+
+    Unlike ``skills`` (which depend on per-session
+    ``skills_scopes``/``explicit_only_skills``, only known once a
+    session exists), ``model``/``tools``/``default_task`` are all
+    fixed by the discovered ``LLMAgentBuilder`` itself -- knowable
+    without building an agent or creating a session, so the UI can
+    show them before ``POST /sessions`` is ever called.
+
+    ``tools`` only reflects ``agent_builder.tools`` (manually added via
+    ``.with_tool()``/``.with_tools()``) -- any MCP-provider-discovered
+    tools aren't known until an async ``.build()`` call actually
+    fetches them (see ``LLMAgentBuilder.build()``), which only happens
+    per-session. A script using ``.with_mcp_provider(...)`` will see a
+    fuller ``tools`` list on ``CreateSessionResponse`` than here.
+
+    Args:
+        session_service (SessionService): The service holding the
+            CLI-discovered ``agent_builder``/``default_task``.
+
+    Returns:
+        AgentInfo: The discovered agent's model, (non-MCP) tool names,
+            and optional default task.
+
+    Raises:
+        AgentBuilderNotConfiguredError: If no ``agent_builder`` was
+            wired up (the process wasn't launched via
+            ``agent-inspector launch <script>``).
+    """
+    agent_builder = session_service.agent_builder
+    if agent_builder is None:
+        raise AgentBuilderNotConfiguredError
+
+    # `model` is best-effort, same rationale as `SessionConfig`'s own
+    # docstring: `BaseLLM` has no generic `model` attribute, only
+    # concrete implementations (e.g. `OllamaLLM`) do.
+    model = getattr(agent_builder.llm, "model", None)
+    return AgentInfo(
+        model=model if isinstance(model, str) else None,
+        tools=[tool.name for tool in agent_builder.tools],
+        default_task=session_service.default_task,
+    )

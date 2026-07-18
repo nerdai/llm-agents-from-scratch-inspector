@@ -136,6 +136,14 @@ export interface TemplatesOut {
   approval_rejection_feedback: string
 }
 
+// --- GET /api/agent-info (not session-scoped) ---
+
+export interface AgentInfoOut {
+  model: string | null
+  tools: string[]
+  default_task: TaskOut | null
+}
+
 // --- POST /api/sessions/{id}/next-step ---
 
 export interface NextStepDecisionOut {

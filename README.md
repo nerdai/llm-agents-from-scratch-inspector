@@ -34,6 +34,7 @@ in the framework.
 ```python
 # main.py
 from llm_agents_from_scratch import LLMAgentBuilder
+from llm_agents_from_scratch.data_structures import Task
 from llm_agents_from_scratch.llms import OllamaLLM
 
 agent_builder = (
@@ -41,6 +42,9 @@ agent_builder = (
     .with_llm(OllamaLLM(model="qwen3:14b"))
     .with_tool(my_tool)
 )
+
+# Optional -- pre-fills the UI's task field at launch time.
+default_task = Task(instruction="Describe the task to run by default.")
 ```
 
 ```bash
@@ -66,6 +70,7 @@ wrong rather than a bare traceback:
 | no `agent_builder` found        | the variable isn't named exactly `agent_builder`, or isn't at module scope |
 | `agent_builder` has the wrong type | it isn't an `LLMAgentBuilder` instance                              |
 | `agent_builder` isn't ready     | `.with_llm(...)` was never called on it before `launch` imports it    |
+| `default_task` has the wrong type | it's present but isn't a `Task` instance                            |
 
 Run `agent-inspector launch --help` for the full flag list (`--port`,
 `--no-open`, `--session-ttl-seconds`, ...) — `--dev` and

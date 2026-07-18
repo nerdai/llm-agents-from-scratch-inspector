@@ -137,7 +137,7 @@ for the full rationale. Instead:
 
 3. `SessionService.create_session_from_config` calls
    `agent_builder.build()` once per new session (see `deps.py`'s
-   `configure_agent_builder`, which wires the CLI-discovered builder
+   `configure_entrypoint`, which wires the CLI-discovered builder
    into the process-wide `SessionService`). Each call returns an
    independent `LLMAgent` — this matters because `run_step`'s
    tool-call recording temporarily mutates `session.agent
@@ -148,3 +148,21 @@ for the full rationale. Instead:
 the client at session-creation time — `CreateSessionRequest` is just
 `{task: str}`. Surfacing the discovered builder's real tools/skills in
 `CreateSessionResponse` is issue #8/#9's job, not #47's.
+
+### Optional `default_task` (#86)
+
+A script can also expose a module-level `default_task` (a `Task`),
+pre-filled into the UI's task field at launch time instead of a value
+hardcoded in the frontend:
+
+```python
+from llm_agents_from_scratch.data_structures import Task
+
+default_task = Task(instruction="Compute next_number starting from 4.")
+```
+
+Unlike `agent_builder`, its absence isn't an error — `discover_entrypoint`
+just reports `None`, and the field starts blank. `GET /api/agent-info`
+surfaces it (alongside `model`/`tools`, both fixed by the discovered
+builder and knowable without a session, unlike `skills`) so the config
+rail can show it before `POST /sessions` is ever called.

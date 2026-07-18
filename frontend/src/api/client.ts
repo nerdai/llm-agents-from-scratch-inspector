@@ -1,5 +1,6 @@
 import type {
   AbortSessionResponse,
+  AgentInfoOut,
   CompleteResponse,
   CreateSessionRequest,
   CreateSessionResponse,
@@ -129,6 +130,12 @@ export function fetchRollout(sessionId: string): Promise<RolloutResponse> {
 
 export function fetchTemplates(): Promise<TemplatesOut> {
   return request<TemplatesOut>('/api/templates')
+}
+
+// --- GET /api/agent-info (not session-scoped) ---
+
+export function fetchAgentInfo(): Promise<AgentInfoOut> {
+  return request<AgentInfoOut>('/api/agent-info')
 }
 
 // --- POST /api/sessions/{id}/next-step ---

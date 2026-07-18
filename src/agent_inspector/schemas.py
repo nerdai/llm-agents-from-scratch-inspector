@@ -241,6 +241,23 @@ class TemplatesOut(BaseModel):
     approval_rejection_feedback: str
 
 
+class AgentInfoOut(BaseModel):
+    """Wire representation of ``GET /api/agent-info`` (see #86).
+
+    The discovered agent's static properties -- knowable from the
+    ``LLMAgentBuilder`` itself, without creating a session -- unlike
+    ``skills``, which stay session-only since they depend on
+    per-session ``skills_scopes``/``explicit_only_skills``. See
+    ``services.session.get_agent_info`` for what each field means
+    (and ``tools``' MCP-provider caveat) and why ``model`` is
+    best-effort.
+    """
+
+    model: str | None = None
+    tools: list[str] = Field(default_factory=list)
+    default_task: TaskOut | None = None
+
+
 class SessionConfigOut(BaseModel):
     """Wire representation of ``SessionConfig`` (see #15).
 
