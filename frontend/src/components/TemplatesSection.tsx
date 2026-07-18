@@ -29,16 +29,18 @@ const TEMPLATE_LABELS: Record<keyof TemplatesOut, string> = {
 const TEMPLATE_KEYS = Object.keys(TEMPLATE_LABELS) as (keyof TemplatesOut)[]
 
 /**
- * `GET /api/templates` -- the framework's default prompt templates,
- * shared across every session's agent (not session-scoped, hence
- * rendered regardless of whether a session exists yet -- see
- * `ConfigRail`). A vertical accordion in the config rail, alongside
- * Task/Tools/Skills/Model, rather than the earlier `TemplatesDrawer`
- * overlay -- templates are as much a part of "what this agent is" as
- * those, so it belongs in the same reflection of agent config, not a
- * separate top-level feature. Collapsed by default, same as
- * `RolloutPanel`, since the full set of templates is a lot of text
- * for a 320px-wide rail.
+ * `GET /api/templates` -- scoped to the discovered agent same as
+ * Tools/Model/Skills (`LLMAgentBuilder.with_templates(...)` exists in
+ * the framework), grouped under `ConfigRail`'s "LLM Agent" heading
+ * alongside them. Rendered regardless of whether a session exists
+ * yet because the backend endpoint doesn't take a session id -- it
+ * always returns the framework's hardcoded default rather than the
+ * discovered builder's actual templates (issue #82) -- not because
+ * templates themselves are somehow agent-independent. A vertical
+ * accordion, same as the earlier `TemplatesDrawer` overlay's contents
+ * but living in the rail instead of a separate top-level feature.
+ * Collapsed by default, same as `RolloutPanel`, since the full set of
+ * templates is a lot of text for a 320px-wide rail.
  */
 function TemplatesSection() {
   const [open, setOpen] = useState(false)
