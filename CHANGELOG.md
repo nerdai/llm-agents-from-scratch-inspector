@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- ...
+
+## [0.1.2] - 2026-07-18
+
 ### Added
 
 - feat: discover an optional `default_task` from the launched script, mirroring the `agent_builder` convention -- pre-fills the UI's task field at launch instead of a value hardcoded in the frontend (#87)
