@@ -92,3 +92,42 @@ test('editing the task after abort carries the edit into the next session form',
     'A brand new task for the next session.',
   )
 })
+
+/**
+ * An explicit-only skill left as an *uncommitted draft* (never
+ * pressed Enter/comma, never blurred) at the moment "Create session"
+ * is clicked -- `TaskForm`'s `handleSubmit` calls `commitPendingDraft()`
+ * to fold it into the submitted `explicit_only_skills` either way, but
+ * regression-tests that this also actually commits the draft into
+ * `useSkillsConfig()`'s own state (not just the value sent to the
+ * backend). Since that hook now persists for `ConfigRail`'s whole
+ * lifetime (#88), a draft folded into the request but never committed
+ * to state would otherwise vanish -- neither shown as a real tag nor
+ * carried into the next session -- even though it was genuinely used.
+ */
+test('an uncommitted skill draft at submit time still shows as a real tag afterward', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await page.locator('#task-input').fill(hailstoneTask(4))
+  await page.getByPlaceholder('skill-name…').fill('draft-skill')
+  // No Enter/comma, no blur -- straight to submit with the draft
+  // still sitting in the input.
+  await page.getByRole('button', { name: 'Create session' }).click()
+  await expect(page).toHaveURL(/session=/)
+
+  const header = page.locator('header')
+  await header.getByRole('button', { name: 'Abort' }).click()
+  const dialog = page.getByRole('alertdialog')
+  await dialog.getByRole('button', { name: 'Abort' }).click()
+
+  // The draft is now a real, committed tag -- not stuck as leftover
+  // uncommitted text in the reappeared input.
+  await expect(
+    page.getByRole('button', { name: 'Remove draft-skill' }),
+  ).toBeVisible()
+  // The placeholder itself disappears once a real tag exists
+  // (`explicitSkills.length === 0 ? 'skill-name…' : ''`), so the
+  // stable id is what's checked here, not the placeholder text.
+  await expect(page.locator('#explicit-skills-input')).toHaveValue('')
+})

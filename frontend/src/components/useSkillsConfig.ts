@@ -44,13 +44,28 @@ export function useSkillsConfig() {
 
   /** The pending tag draft folded into `explicitSkills` -- for a
    * submit handler that needs the final committed list without
-   * waiting for a blur/Enter first (mirrors `commitTag`'s own
-   * dedup rule). */
+   * waiting for a blur/Enter first (mirrors `commitTag`'s own dedup
+   * rule). Also actually commits it into state (clearing `tagDraft`),
+   * not just computing the value to submit -- `useSkillsConfig()` now
+   * persists for `ConfigRail`'s whole lifetime (#88), so an
+   * uncommitted draft used here but never folded into `explicitSkills`
+   * would submit successfully yet never show up as a real tag
+   * afterward (including in the post-completion view this same
+   * instance feeds). Returns the computed list directly rather than
+   * relying on `explicitSkills` after the `setExplicitSkills` above,
+   * since state updates aren't visible synchronously in the same
+   * call. */
   const commitPendingDraft = (): string[] => {
     const pending = tagDraft.trim()
-    return pending && !explicitSkills.includes(pending)
-      ? [...explicitSkills, pending]
-      : explicitSkills
+    const next =
+      pending && !explicitSkills.includes(pending)
+        ? [...explicitSkills, pending]
+        : explicitSkills
+    if (pending) {
+      setExplicitSkills(next)
+      setTagDraft('')
+    }
+    return next
   }
 
   return {
