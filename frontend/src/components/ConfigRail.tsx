@@ -103,6 +103,12 @@ function ToolsField({ tools }: { tools: string[] }) {
  * only once the query resolves without either an effect-driven
  * `setState` (this repo's lint config flags exactly that pattern) or
  * a remount-via-`key` hack -- gating on `isLoading` sidesteps both.
+ * A failed request gets its own explicit error state (same pattern as
+ * `TemplatesSection`) rather than silently falling through to
+ * `agentInfo`'s optional-chained fallbacks -- a real fetch failure
+ * (backend unreachable, `agent-inspector launch` misconfigured, ...)
+ * should read as "something's wrong", not blend in with the ordinary
+ * "nothing discovered" empty states.
  *
  * Deliberately does not own the timeline, the approve/reject gate, or
  * error toasts (#22/#23), and does not rehydrate from a reload (#24).
@@ -116,13 +122,28 @@ function ConfigRail({ state, onCreate, onReset }: ConfigRailProps) {
   // Called unconditionally (rules of hooks) even though only the
   // pre-session branch below needs it -- `hasSession` flips within
   // this same component instance once a session is created.
-  const { data: agentInfo, isLoading: agentInfoLoading } = useAgentInfo()
+  const {
+    data: agentInfo,
+    isLoading: agentInfoLoading,
+    isError: agentInfoIsError,
+    error: agentInfoError,
+  } = useAgentInfo()
 
   if (!hasSession) {
     if (agentInfoLoading) {
       return (
         <div className="p-4.5 text-xs text-muted-foreground">
           Loading agent info…
+        </div>
+      )
+    }
+    if (agentInfoIsError) {
+      return (
+        <div className="p-4.5 text-xs text-destructive">
+          Failed to load agent info
+          {agentInfoError instanceof Error
+            ? `: ${agentInfoError.message}`
+            : '.'}
         </div>
       )
     }
