@@ -19,6 +19,14 @@ also surfaced in ``agent-inspector launch --help`` and
 ``docs/overview.md``.
 """
 
+DEFAULT_TASK_ATTR = "default_task"
+"""The well-known, optional module-level name for a script's default
+``Task``, shown pre-filled in the UI's task field at launch time
+instead of a hardcoded string baked into the frontend. Unlike
+``AGENT_BUILDER_ATTR``, absence is not an error -- a script with no
+``default_task`` just leaves the field blank.
+"""
+
 
 class EntrypointDiscoveryError(Exception):
     """Base class for every way entrypoint discovery can fail."""
@@ -98,6 +106,24 @@ class InvalidAgentBuilderTypeError(EntrypointDiscoveryError):
         super().__init__(
             f"Agent script {path}'s `{AGENT_BUILDER_ATTR}` is a "
             f"{self.actual_type.__name__}, not an LLMAgentBuilder.",
+        )
+
+
+class InvalidDefaultTaskTypeError(EntrypointDiscoveryError):
+    """Raised when ``DEFAULT_TASK_ATTR`` isn't a ``Task``."""
+
+    def __init__(self, path: Path, actual: object) -> None:
+        """Initialize an InvalidDefaultTaskTypeError.
+
+        Args:
+            path (Path): The script with the wrongly-typed attribute.
+            actual (object): The value actually found.
+        """
+        self.path = path
+        self.actual_type = type(actual)
+        super().__init__(
+            f"Agent script {path}'s `{DEFAULT_TASK_ATTR}` is a "
+            f"{self.actual_type.__name__}, not a Task.",
         )
 
 

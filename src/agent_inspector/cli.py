@@ -15,10 +15,11 @@ from typing import Optional
 import typer
 import uvicorn
 
-from agent_inspector.deps import configure_agent_builder
-from agent_inspector.discovery import discover_agent_builder
+from agent_inspector.deps import configure_entrypoint
+from agent_inspector.discovery import discover_entrypoint
 from agent_inspector.errors.discovery import (
     AGENT_BUILDER_ATTR,
+    DEFAULT_TASK_ATTR,
     EntrypointDiscoveryError,
 )
 from agent_inspector.server import create_app
@@ -77,8 +78,10 @@ def launch(
             "least `.with_llm(...)` already called on it. Agent "
             "Inspector imports this script once at launch and calls "
             f"`{AGENT_BUILDER_ATTR}.build()` once per new session to "
-            "obtain a fresh, independent LLMAgent. See ADR-002 and "
-            "docs/overview.md for the full convention."
+            "obtain a fresh, independent LLMAgent. The script may also "
+            f"expose an optional `{DEFAULT_TASK_ATTR}` (a `Task`), "
+            "pre-filled into the UI's task field at launch time. See "
+            "ADR-002 and docs/overview.md for the full convention."
         ),
     ),
     port: int = typer.Option(
@@ -148,12 +151,12 @@ def launch(
             ``AGENT_INSPECTOR_SESSION_TTL_SECONDS``.
     """
     try:
-        agent_builder = discover_agent_builder(agent_script)
+        discovered = discover_entrypoint(agent_script)
     except EntrypointDiscoveryError as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(code=1) from e
 
-    configure_agent_builder(agent_builder)
+    configure_entrypoint(discovered)
 
     serve_static = not backend_only and not dev
     fastapi_app = create_app(

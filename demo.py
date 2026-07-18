@@ -28,6 +28,7 @@ just the one tool for a reliably smooth first run.
 """
 
 from llm_agents_from_scratch import LLMAgentBuilder
+from llm_agents_from_scratch.data_structures import Task
 from llm_agents_from_scratch.llms import OllamaLLM
 from llm_agents_from_scratch.tools import SimpleFunctionTool
 
@@ -47,4 +48,14 @@ agent_builder = (
         OllamaLLM(model="qwen3:14b", think=False),
     )
     .with_tool(next_number_tool)
+)
+
+# Optional (see #86 / discovery.py): pre-fills the UI's task field at
+# launch time instead of the frontend hardcoding this Quickstart's own
+# example task.
+default_task = Task(
+    instruction=(
+        "Compute the full Hailstone sequence starting from 4, step by "
+        "step using next_number, until you reach 1."
+    ),
 )

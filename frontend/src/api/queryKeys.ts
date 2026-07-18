@@ -9,6 +9,7 @@ export const queryKeys = {
   health: ['health'] as const,
   ollamaStatus: ['ollama', 'status'] as const,
   templates: ['templates'] as const,
+  agentInfo: ['agent-info'] as const,
   session: (sessionId: string) => ['session', sessionId] as const,
   sessionRollout: (sessionId: string) =>
     ['session', sessionId, 'rollout'] as const,

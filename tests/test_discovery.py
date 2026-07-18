@@ -1,10 +1,11 @@
-"""Tests for convention-based entrypoint discovery (#47, ADR-002).
+"""Tests for convention-based entrypoint discovery (#47, ADR-002; #86).
 
-Exercises ``discover_agent_builder`` against real, on-disk fixture
+Exercises ``discover_entrypoint`` against real, on-disk fixture
 scripts written to ``tmp_path`` -- covering every failure mode the
 issue calls out (missing script, import-time failure, missing
-``agent_builder``, wrong type, builder with no ``llm`` set) plus the
-happy path, and asserting each raises the specific, actionable
+``agent_builder``, wrong type, builder with no ``llm`` set, wrongly-
+typed ``default_task``) plus the happy path (with and without a
+``default_task``), and asserting each raises the specific, actionable
 exception rather than letting a raw traceback propagate.
 """
 
@@ -12,13 +13,16 @@ from pathlib import Path
 
 import pytest
 from llm_agents_from_scratch import LLMAgentBuilder
+from llm_agents_from_scratch.data_structures import Task
 
-from agent_inspector.discovery import discover_agent_builder
+from agent_inspector.discovery import discover_entrypoint
 from agent_inspector.errors.discovery import (
     AGENT_BUILDER_ATTR,
+    DEFAULT_TASK_ATTR,
     AgentBuilderNotReadyError,
     EntrypointDiscoveryError,
     InvalidAgentBuilderTypeError,
+    InvalidDefaultTaskTypeError,
     MissingAgentBuilderError,
     ScriptImportError,
     ScriptNotFoundError,
@@ -67,7 +71,7 @@ class TestScriptNotFound:
         missing = tmp_path / "does_not_exist.py"
 
         with pytest.raises(ScriptNotFoundError):
-            discover_agent_builder(missing)
+            discover_entrypoint(missing)
 
     def test_directory_path_raises_script_not_found(
         self,
@@ -75,7 +79,7 @@ class TestScriptNotFound:
     ) -> None:
         """A directory (not a file) is also reported as not found."""
         with pytest.raises(ScriptNotFoundError):
-            discover_agent_builder(tmp_path)
+            discover_entrypoint(tmp_path)
 
 
 class TestScriptImportFailure:
@@ -86,7 +90,7 @@ class TestScriptImportFailure:
         script = _write(tmp_path, "broken.py", "def broken(:\n    pass\n")
 
         with pytest.raises(ScriptImportError):
-            discover_agent_builder(script)
+            discover_entrypoint(script)
 
     def test_import_error_is_wrapped(self, tmp_path: Path) -> None:
         """A script importing a nonexistent module raises ScriptImportError."""
@@ -97,7 +101,7 @@ class TestScriptImportFailure:
         )
 
         with pytest.raises(ScriptImportError):
-            discover_agent_builder(script)
+            discover_entrypoint(script)
 
     def test_error_at_module_scope_is_wrapped(self, tmp_path: Path) -> None:
         """An exception raised at module scope raises ScriptImportError."""
@@ -108,7 +112,7 @@ class TestScriptImportFailure:
         )
 
         with pytest.raises(ScriptImportError):
-            discover_agent_builder(script)
+            discover_entrypoint(script)
 
 
 class TestMissingAgentBuilder:
@@ -119,7 +123,7 @@ class TestMissingAgentBuilder:
         script = _write(tmp_path, "no_builder.py", "x = 1\n")
 
         with pytest.raises(MissingAgentBuilderError):
-            discover_agent_builder(script)
+            discover_entrypoint(script)
 
 
 class TestInvalidAgentBuilderType:
@@ -134,7 +138,7 @@ class TestInvalidAgentBuilderType:
         )
 
         with pytest.raises(InvalidAgentBuilderTypeError):
-            discover_agent_builder(script)
+            discover_entrypoint(script)
 
 
 class TestAgentBuilderNotReady:
@@ -150,20 +154,58 @@ class TestAgentBuilderNotReady:
         )
 
         with pytest.raises(AgentBuilderNotReadyError):
-            discover_agent_builder(script)
+            discover_entrypoint(script)
 
 
-class TestDiscoverAgentBuilderSuccess:
+class TestInvalidDefaultTaskType:
+    """A script whose ``default_task`` isn't a ``Task``."""
+
+    def test_wrong_type_raises(self, tmp_path: Path) -> None:
+        """A non-Task `default_task` raises InvalidDefaultTaskTypeError."""
+        script = _write(
+            tmp_path,
+            "wrong_default_task.py",
+            _VALID_SCRIPT + f"\n{DEFAULT_TASK_ATTR} = 'not a Task'\n",
+        )
+
+        with pytest.raises(InvalidDefaultTaskTypeError):
+            discover_entrypoint(script)
+
+
+class TestDiscoverEntrypointSuccess:
     """The happy path: a well-formed script with a ready builder."""
 
     def test_returns_the_discovered_builder(self, tmp_path: Path) -> None:
         """A valid script's `agent_builder` is returned as-is."""
         script = _write(tmp_path, "main.py", _VALID_SCRIPT)
 
-        builder = discover_agent_builder(script)
+        discovered = discover_entrypoint(script)
 
-        assert isinstance(builder, LLMAgentBuilder)
-        assert builder.llm is not None
+        assert isinstance(discovered.agent_builder, LLMAgentBuilder)
+        assert discovered.agent_builder.llm is not None
+
+    def test_no_default_task_is_none(self, tmp_path: Path) -> None:
+        """A script with no `default_task` reports `None`, not an error."""
+        script = _write(tmp_path, "main.py", _VALID_SCRIPT)
+
+        discovered = discover_entrypoint(script)
+
+        assert discovered.default_task is None
+
+    def test_default_task_is_returned(self, tmp_path: Path) -> None:
+        """A script's `default_task` (a real `Task`) is returned as-is."""
+        script = _write(
+            tmp_path,
+            "main.py",
+            _VALID_SCRIPT + "\n"
+            "from llm_agents_from_scratch.data_structures import Task\n"
+            f"{DEFAULT_TASK_ATTR} = Task(instruction='do the thing')\n",
+        )
+
+        discovered = discover_entrypoint(script)
+
+        assert isinstance(discovered.default_task, Task)
+        assert discovered.default_task.instruction == "do the thing"
 
     def test_two_scripts_are_independently_importable(
         self,
@@ -173,10 +215,10 @@ class TestDiscoverAgentBuilderSuccess:
         first = _write(tmp_path, "first.py", _VALID_SCRIPT)
         second = _write(tmp_path, "second.py", _VALID_SCRIPT)
 
-        builder_one = discover_agent_builder(first)
-        builder_two = discover_agent_builder(second)
+        discovered_one = discover_entrypoint(first)
+        discovered_two = discover_entrypoint(second)
 
-        assert builder_one is not builder_two
+        assert discovered_one.agent_builder is not discovered_two.agent_builder
 
     def test_same_filename_in_different_directories_does_not_collide(
         self,
@@ -195,10 +237,10 @@ class TestDiscoverAgentBuilderSuccess:
         first = _write(dir_a, "main.py", _VALID_SCRIPT)
         second = _write(dir_b, "main.py", _VALID_SCRIPT)
 
-        builder_one = discover_agent_builder(first)
-        builder_two = discover_agent_builder(second)
+        discovered_one = discover_entrypoint(first)
+        discovered_two = discover_entrypoint(second)
 
-        assert builder_one is not builder_two
+        assert discovered_one.agent_builder is not discovered_two.agent_builder
 
     def test_sibling_module_import_resolves(self, tmp_path: Path) -> None:
         """A script that imports a sibling module in its own directory works.
@@ -239,9 +281,9 @@ class TestDiscoverAgentBuilderSuccess:
             f"{AGENT_BUILDER_ATTR} = LLMAgentBuilder().with_llm(_FakeLLM())\n",
         )
 
-        builder = discover_agent_builder(script)
+        discovered = discover_entrypoint(script)
 
-        assert isinstance(builder, LLMAgentBuilder)
+        assert isinstance(discovered.agent_builder, LLMAgentBuilder)
 
 
 def test_all_discovery_errors_are_entrypoint_discovery_errors() -> None:
@@ -252,5 +294,6 @@ def test_all_discovery_errors_are_entrypoint_discovery_errors() -> None:
         MissingAgentBuilderError,
         InvalidAgentBuilderTypeError,
         AgentBuilderNotReadyError,
+        InvalidDefaultTaskTypeError,
     ):
         assert issubclass(cls, EntrypointDiscoveryError)

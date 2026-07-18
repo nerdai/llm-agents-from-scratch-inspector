@@ -15,7 +15,7 @@ here stand in for that discovered builder with a fixture
 ``LLMAgentBuilder`` wired to a network-free ``BaseLLM``, following the
 same pattern as ``test_next_step_route.py``'s ``_MockBaseLLM``, and
 inject it into ``SessionService`` directly (the same role
-``deps.configure_agent_builder`` plays at real CLI-launch time).
+``deps.configure_entrypoint`` plays at real CLI-launch time).
 """
 
 from pathlib import Path

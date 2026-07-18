@@ -64,6 +64,7 @@ from llm_agents_from_scratch.data_structures import (
     ChatRole,
     CompleteResult,
     NextStepDecision,
+    Task,
     ToolCall,
     ToolCallResult,
 )
@@ -105,7 +106,14 @@ class _StatelessHailstoneLLM(BaseLLM):
 
     See this module's docstring for why "stateless" (as opposed to
     ``_SequencedLLM``'s consumed-queue script) matters here.
+
+    ``model`` is a real attribute (not just inherited absence) so
+    ``agent-info.spec.ts`` can assert on ``GET /api/agent-info``'s
+    ``model`` actually surfacing something, same as a real
+    ``OllamaLLM``.
     """
+
+    model: str = "scripted-test-llm"
 
     async def complete(self, prompt: str, **kwargs: Any) -> CompleteResult:
         """Unused on this suite's path; provided to satisfy BaseLLM."""
@@ -220,4 +228,13 @@ agent_builder = (
     LLMAgentBuilder()
     .with_llm(_StatelessHailstoneLLM())
     .with_tool(next_number_tool)
+)
+
+# Matches `helpers.ts`'s `hailstoneTask(4)` exactly, so
+# `agent-info.spec.ts` can assert the pre-session task field really
+# came from this (#86), not a hardcoded frontend fallback -- while
+# every other spec still overrides it via `createSession(page, task)`
+# before submitting, so this has no effect on them.
+default_task = Task(
+    instruction="Compute next_number starting from x=4 until you reach 1.",
 )

@@ -7,9 +7,11 @@ tools, skills, memories, and a model, all in code via its fluent
 ``with_*`` methods) and exposes it at a well-known module-level name.
 ``agent-inspector launch <script>`` imports that script the same way
 Gradio discovers a user's ``demo`` object: standard ``importlib``
-machinery against an arbitrary file path, then a lookup of a
-conventionally-named attribute -- not a subprocess, not a wire
-protocol.
+machinery against an arbitrary file path, then a lookup of
+conventionally-named attributes -- not a subprocess, not a wire
+protocol. A script can also expose an optional module-level
+``default_task`` (a ``Task``), shown pre-filled in the UI's task field
+at launch time instead of a value hardcoded in the frontend.
 
 This module owns that import + discovery mechanism. Every way it can
 fail (missing script, broken import, missing attribute, wrong type,
@@ -26,35 +28,50 @@ standard in ``docs/overview.md``).
 import importlib.util
 import sys
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 
 from llm_agents_from_scratch import LLMAgentBuilder
+from llm_agents_from_scratch.data_structures import Task
 
 from agent_inspector.errors.discovery import (
     AGENT_BUILDER_ATTR,
+    DEFAULT_TASK_ATTR,
     AgentBuilderNotReadyError,
     InvalidAgentBuilderTypeError,
+    InvalidDefaultTaskTypeError,
     MissingAgentBuilderError,
     ScriptImportError,
     ScriptNotFoundError,
 )
 
 
-def discover_agent_builder(script_path: Path) -> LLMAgentBuilder:
-    """Import ``script_path`` and discover its ``LLMAgentBuilder``.
+@dataclass(frozen=True)
+class DiscoveredEntrypoint:
+    """Everything ``discover_entrypoint`` finds in a user's script."""
+
+    agent_builder: LLMAgentBuilder
+    default_task: Task | None
+
+
+def discover_entrypoint(script_path: Path) -> DiscoveredEntrypoint:
+    """Import ``script_path`` and discover its entrypoint.
 
     Uses ``importlib.util.spec_from_file_location`` +
     ``module_from_spec`` -- the standard mechanism for importing an
     arbitrary file path that isn't necessarily on ``sys.path`` or part
-    of an installed package -- then looks up ``AGENT_BUILDER_ATTR`` on
-    the resulting module.
+    of an installed package -- then looks up ``AGENT_BUILDER_ATTR``
+    (required) and ``DEFAULT_TASK_ATTR`` (optional) on the resulting
+    module.
 
     Args:
         script_path (Path): Path to the user's entrypoint script.
 
     Returns:
-        LLMAgentBuilder: The discovered builder, verified to have
-            ``llm`` already configured.
+        DiscoveredEntrypoint: The discovered ``agent_builder``
+            (verified to have ``llm`` already configured) and
+            ``default_task`` (``None`` if the script doesn't define
+            one).
 
     Raises:
         ScriptNotFoundError: If ``script_path`` doesn't exist.
@@ -64,6 +81,8 @@ def discover_agent_builder(script_path: Path) -> LLMAgentBuilder:
         InvalidAgentBuilderTypeError: If that attribute isn't an
             ``LLMAgentBuilder`` instance.
         AgentBuilderNotReadyError: If the builder has no ``llm`` set.
+        InvalidDefaultTaskTypeError: If ``DEFAULT_TASK_ATTR`` is
+            present but isn't a ``Task`` instance.
     """
     if not script_path.is_file():
         raise ScriptNotFoundError(script_path)
@@ -115,4 +134,13 @@ def discover_agent_builder(script_path: Path) -> LLMAgentBuilder:
     if agent_builder.llm is None:
         raise AgentBuilderNotReadyError(script_path)
 
-    return agent_builder
+    default_task: Task | None = None
+    if hasattr(module, DEFAULT_TASK_ATTR):
+        default_task = getattr(module, DEFAULT_TASK_ATTR)
+        if not isinstance(default_task, Task):
+            raise InvalidDefaultTaskTypeError(script_path, default_task)
+
+    return DiscoveredEntrypoint(
+        agent_builder=agent_builder,
+        default_task=default_task,
+    )

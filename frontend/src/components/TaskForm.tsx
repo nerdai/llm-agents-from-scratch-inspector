@@ -10,15 +10,17 @@ import type { CreateSessionRequest, SkillScope } from '../api/types'
 interface TaskFormProps {
   onCreate: (req: CreateSessionRequest) => void
   disabled: boolean
+  /** Pre-fills the task field -- the discovered script's
+   * `default_task` (`GET /api/agent-info`, #86) if it set one, or
+   * `''` otherwise. Read once, on mount -- `TaskForm` owns `task` as
+   * local edit state from then on, same as every other field here. */
+  initialTask: string
   /** Rendered between the form fields and the "Create session" button
    * -- e.g. `TemplatesSection`, so "Create session" stays the very
    * last thing in the rail, matching where "Start new session" sits
    * post-session (see `ConfigRail`). */
   children?: ReactNode
 }
-
-const DEFAULT_TASK =
-  'Compute the full Hailstone sequence starting from 4, step by step using next_number, until you reach 1.'
 
 const SCOPE_OPTIONS: readonly SkillScope[] = ['user', 'project']
 
@@ -32,8 +34,13 @@ const SCOPE_OPTIONS: readonly SkillScope[] = ['user', 'project']
  * names are blind inputs here: scope toggle chips and a free-text tag
  * list, not a pre-populated picker.
  */
-function TaskForm({ onCreate, disabled, children }: TaskFormProps) {
-  const [task, setTask] = useState(DEFAULT_TASK)
+function TaskForm({
+  onCreate,
+  disabled,
+  initialTask,
+  children,
+}: TaskFormProps) {
+  const [task, setTask] = useState(initialTask)
   const [scopes, setScopes] = useState<SkillScope[]>([])
   const [explicitSkills, setExplicitSkills] = useState<string[]>([])
   const [tagDraft, setTagDraft] = useState('')

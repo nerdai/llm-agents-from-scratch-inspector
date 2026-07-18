@@ -19,6 +19,7 @@ from fastapi import APIRouter, status
 from agent_inspector.deps import SessionServiceDep
 from agent_inspector.schemas import (
     AbortSessionResponse,
+    AgentInfoOut,
     CreateSessionRequest,
     CreateSessionResponse,
     EditResultRequest,
@@ -41,6 +42,7 @@ from agent_inspector.schemas import (
 )
 from agent_inspector.services.session import (
     NextStepDecisionOutcome,
+    get_agent_info,
     get_templates,
 )
 
@@ -205,6 +207,41 @@ async def get_default_templates() -> TemplatesOut:
             ``LLMAgentTemplates``.
     """
     return TemplatesOut(**get_templates())
+
+
+@router.get("/agent-info")
+async def get_discovered_agent_info(
+    session_service: SessionServiceDep,
+) -> AgentInfoOut:
+    """Return the discovered agent's static properties (see #86).
+
+    ``model``/``tools``/``default_task`` are fixed by the discovered
+    ``LLMAgentBuilder`` itself, unlike ``skills`` -- so, like
+    ``GET /api/templates``, this needs no ``session_id`` and is
+    reachable before any session exists (see
+    ``services.session.get_agent_info``).
+
+    Returns:
+        AgentInfoOut: The discovered agent's model, tool names, and
+            optional default task.
+
+    Raises:
+        AgentBuilderNotConfiguredError: Mapped to ``500`` if no
+            builder was discovered/configured for this process.
+    """
+    info = get_agent_info(session_service)
+    return AgentInfoOut(
+        model=info.model,
+        tools=info.tools,
+        default_task=(
+            TaskOut(
+                id_=info.default_task.id_,
+                instruction=info.default_task.instruction,
+            )
+            if info.default_task is not None
+            else None
+        ),
+    )
 
 
 @router.post("/sessions/{session_id}/next-step")
