@@ -54,7 +54,7 @@ test('scope/explicit-only choices made after abort persist into the next session
 
 /**
  * The Task field gets the same "reappear editable, carry forward"
- * treatment (#90): once a session is done, it becomes a real
+ * treatment: once a session is done, it becomes a real
  * `Textarea` (pre-filled from that session's own task) instead of a
  * read-only `<p>`, and an edit made there is what "Start new session"
  * seeds the next `TaskForm` mount with.

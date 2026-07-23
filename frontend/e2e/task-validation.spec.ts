@@ -7,7 +7,7 @@ import { createSession, hailstoneTask } from './helpers'
  * `test_blank_task_raises_session_config_error`). `TaskForm`'s
  * `canSubmit = task.trim().length > 0 && !disabled` disables "Create
  * session" for a blank/whitespace-only task -- this exercises that on
- * both the pre-session form and the post-completion one (#88/#90),
+ * both the pre-session form and the post-completion one (#88),
  * which feeds the same validation through `initialTask`/`nextTaskDraft`.
  */
 test('Create session is disabled for a blank or whitespace-only task', async ({
@@ -41,7 +41,7 @@ test('Start new session carries a blank task forward as disabled, not a crash', 
   const dialog = page.getByRole('alertdialog')
   await dialog.getByRole('button', { name: 'Abort' }).click()
 
-  // Clear the reappeared, editable task box (#90) before starting a
+  // Clear the reappeared, editable task box before starting a
   // fresh session -- nothing here should let a blank task through.
   await page.locator('#task-input').fill('')
   await page.getByRole('button', { name: 'Start new session' }).click()
