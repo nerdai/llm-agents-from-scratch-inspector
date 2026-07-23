@@ -124,7 +124,7 @@ function ToolsField({ tools }: { tools: string[] }) {
  * was chosen survives "Start new session" (`onReset`) into the fresh
  * `TaskForm` that mounts afterward, instead of being discarded.
  *
- * The Task field gets the same treatment (#90): read-only `<p>` while
+ * The Task field gets the same treatment: read-only `<p>` while
  * a session is in progress, but an editable `Textarea` once `isDone`
  * -- seeded from that session's own `state.task.instruction` the
  * moment it finishes (`knownIsDone`'s render-time resync below, the
