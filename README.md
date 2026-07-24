@@ -106,6 +106,13 @@ UI instead of the notebook's own manual loop.
    through `get_next_step()`/`run_step()` until the agent reaches a
    final result to approve.
 
+No local Ollama? `demo_cloud.py` is the same demo pointed at
+[Ollama Cloud](https://ollama.com/cloud) instead -- set `OLLAMA_API_KEY`
+(the `ollama` package reads it directly; nothing here handles it) and
+run `uv run agent-inspector launch demo_cloud.py`. The app bar shows
+an "ollama cloud" chip instead of the local daemon's online/offline
+check either way.
+
 ## Development
 
 `agent-inspector launch` takes a path to a Python script that exposes an

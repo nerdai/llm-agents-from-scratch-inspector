@@ -40,6 +40,7 @@ from llm_agents_from_scratch.data_structures import (
     ToolCallResult,
 )
 from llm_agents_from_scratch.data_structures.skill import SkillScope
+from llm_agents_from_scratch.llms import OllamaLLM
 from llm_agents_from_scratch.tools.mcp import MCPTool
 
 from agent_inspector.errors.session import (
@@ -1540,17 +1541,64 @@ class AgentInfo:
     model: str | None
     tools: list[str]
     default_task: Task | None
+    ollama_host: str | None
+    is_local_ollama: bool | None
+
+
+_LOCAL_OLLAMA_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+def _ollama_host_info(llm: object) -> tuple[str | None, bool | None]:
+    """Return ``(ollama_host, is_local_ollama)`` for an ``OllamaLLM`` (see #90).
+
+    ``(None, None)`` for anything that isn't an ``OllamaLLM`` -- there's
+    no local-daemon concept at all for other ``BaseLLM``
+    implementations (e.g. the framework's own OpenAI integration), so
+    ``GET /api/ollama/status``'s local-reachability check is equally
+    irrelevant to them as it is to a cloud-configured ``OllamaLLM``.
+
+    Reaches into ``OllamaLLM._client`` (the ``ollama`` package's own
+    ``AsyncClient``) and *its* ``._client`` (the underlying
+    ``httpx.AsyncClient`` it wraps) to read the actually-resolved
+    ``base_url`` -- there's no public API for this on either class.
+    ``OllamaLLM(host=None)`` resolves to ``ollama``'s own default,
+    ``http://127.0.0.1:11434`` (see ``ollama._client._parse_host``),
+    which is what a script pointing at Ollama Cloud
+    (``OllamaLLM(host="https://ollama.com", ...)``, authenticated via
+    the ``OLLAMA_API_KEY`` env var the ``ollama`` package itself reads
+    -- see ``ch07.ipynb``'s Example 4) overrides. Degrades to
+    ``(None, None)`` rather than raising if that internal shape ever
+    changes, since this is reaching past both libraries' public APIs.
+
+    Args:
+        llm (object): The discovered agent's backbone LLM
+            (``agent_builder.llm``).
+
+    Returns:
+        tuple[str | None, bool | None]: The resolved host (as a
+            string, e.g. ``"http://127.0.0.1:11434"`` or
+            ``"https://ollama.com"``) and whether it's local, or
+            ``(None, None)`` if ``llm`` isn't an ``OllamaLLM``.
+    """
+    if not isinstance(llm, OllamaLLM):
+        return None, None
+    try:
+        base_url = llm._client._client.base_url  # noqa: SLF001
+    except AttributeError:
+        return None, None
+    return str(base_url), base_url.host in _LOCAL_OLLAMA_HOSTS
 
 
 def get_agent_info(session_service: SessionService) -> AgentInfo:
-    """Return the discovered agent's static properties (see #86).
+    """Return the discovered agent's static properties (see #86, #90).
 
     Unlike ``skills`` (which depend on per-session
     ``skills_scopes``/``explicit_only_skills``, only known once a
-    session exists), ``model``/``tools``/``default_task`` are all
-    fixed by the discovered ``LLMAgentBuilder`` itself -- knowable
-    without building an agent or creating a session, so the UI can
-    show them before ``POST /sessions`` is ever called.
+    session exists), ``model``/``tools``/``default_task``/
+    ``ollama_host``/``is_local_ollama`` are all fixed by the discovered
+    ``LLMAgentBuilder`` itself -- knowable without building an agent or
+    creating a session, so the UI can show them before
+    ``POST /sessions`` is ever called.
 
     ``tools`` only reflects ``agent_builder.tools`` (manually added via
     ``.with_tool()``/``.with_tools()``) -- any MCP-provider-discovered
@@ -1565,7 +1613,8 @@ def get_agent_info(session_service: SessionService) -> AgentInfo:
 
     Returns:
         AgentInfo: The discovered agent's model, (non-MCP) tool names,
-            and optional default task.
+            optional default task, and Ollama host info (see
+            ``_ollama_host_info``).
 
     Raises:
         AgentBuilderNotConfiguredError: If no ``agent_builder`` was
@@ -1580,8 +1629,11 @@ def get_agent_info(session_service: SessionService) -> AgentInfo:
     # docstring: `BaseLLM` has no generic `model` attribute, only
     # concrete implementations (e.g. `OllamaLLM`) do.
     model = getattr(agent_builder.llm, "model", None)
+    ollama_host, is_local_ollama = _ollama_host_info(agent_builder.llm)
     return AgentInfo(
         model=model if isinstance(model, str) else None,
         tools=[tool.name for tool in agent_builder.tools],
         default_task=session_service.default_task,
+        ollama_host=ollama_host,
+        is_local_ollama=is_local_ollama,
     )
