@@ -18,11 +18,10 @@ by the `ollama` package itself, which reads `OLLAMA_API_KEY` from the
 environment (see `ollama._client.BaseClient.__init__`); nothing here
 passes a key explicitly. Get one at https://ollama.com/settings/keys.
 
-Doesn't pass `json_prompt_mode=True` the way `ch07.ipynb` does for
-cloud reliability -- that parameter isn't in the version of
-`llm-agents-from-scratch` this project currently depends on
-(`>=0.0.19,<0.1.0`; added to the framework's own unreleased `main`
-after 0.0.20). Worth adding here once a release with it ships.
+Passes `json_prompt_mode=True`, same as `ch07.ipynb`'s `use_cloud`
+branch, for cloud reliability (prompt-level JSON coercion rather than
+relying on Ollama's native structured-output `format` param) --
+requires `llm-agents-from-scratch>=0.0.21`, which added the parameter.
 """
 
 from llm_agents_from_scratch import LLMAgentBuilder
@@ -43,7 +42,11 @@ next_number_tool = SimpleFunctionTool(func=next_number)
 agent_builder = (
     LLMAgentBuilder()
     .with_llm(
-        OllamaLLM(host="https://ollama.com", model="qwen3.5:397b-cloud"),
+        OllamaLLM(
+            host="https://ollama.com",
+            model="qwen3.5:397b-cloud",
+            json_prompt_mode=True,
+        ),
     )
     .with_tool(next_number_tool)
 )
