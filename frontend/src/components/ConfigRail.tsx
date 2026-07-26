@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
+import { Loader2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -71,6 +72,42 @@ function ToolsField({ tools }: { tools: string[] }) {
         <span className="text-xs text-muted-foreground">
           (no tools discovered)
         </span>
+      )}
+    </div>
+  )
+}
+
+const SLOW_AGENT_INFO_SECONDS = 4
+
+/** `useAgentInfo()`'s loading state -- a live elapsed-seconds ticker
+ * (not just static "Loading…" text) so it reads as "still working",
+ * not stuck, when discovery genuinely takes a while (a cloud-hosted
+ * LLM client, a slow import chain, ...) -- static text with no
+ * movement at all was easy to mistake for a frozen app. */
+function AgentInfoLoading() {
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+
+  useEffect(() => {
+    const startedAt = Date.now()
+    const id = setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000))
+    }, 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  return (
+    <div className="flex flex-col gap-2 p-4.5 text-xs text-muted-foreground">
+      <div className="flex items-center gap-2">
+        <Loader2 className="size-3.5 flex-none animate-spin" />
+        <span>
+          Loading agent info{elapsedSeconds > 0 ? ` · ${elapsedSeconds}s` : '…'}
+        </span>
+      </div>
+      {elapsedSeconds >= SLOW_AGENT_INFO_SECONDS && (
+        <p className="text-[11px]">
+          Still discovering the agent -- a cloud-hosted or slow-to-import LLM
+          client can take a little while to set up.
+        </p>
       )}
     </div>
   )
@@ -170,11 +207,7 @@ function ConfigRail({ state, onCreate, onReset }: ConfigRailProps) {
 
   if (!hasSession) {
     if (agentInfoLoading) {
-      return (
-        <div className="p-4.5 text-xs text-muted-foreground">
-          Loading agent info…
-        </div>
-      )
+      return <AgentInfoLoading />
     }
     if (agentInfoIsError) {
       return (
