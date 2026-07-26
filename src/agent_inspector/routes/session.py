@@ -213,17 +213,17 @@ async def get_default_templates() -> TemplatesOut:
 async def get_discovered_agent_info(
     session_service: SessionServiceDep,
 ) -> AgentInfoOut:
-    """Return the discovered agent's static properties (see #86).
+    """Return the discovered agent's static properties (see #86, #90).
 
-    ``model``/``tools``/``default_task`` are fixed by the discovered
-    ``LLMAgentBuilder`` itself, unlike ``skills`` -- so, like
-    ``GET /api/templates``, this needs no ``session_id`` and is
-    reachable before any session exists (see
-    ``services.session.get_agent_info``).
+    ``model``/``tools``/``default_task``/``ollama_host``/
+    ``is_local_ollama`` are fixed by the discovered ``LLMAgentBuilder``
+    itself, unlike ``skills`` -- so, like ``GET /api/templates``, this
+    needs no ``session_id`` and is reachable before any session exists
+    (see ``services.session.get_agent_info``).
 
     Returns:
-        AgentInfoOut: The discovered agent's model, tool names, and
-            optional default task.
+        AgentInfoOut: The discovered agent's model, tool names,
+            optional default task, and Ollama host info.
 
     Raises:
         AgentBuilderNotConfiguredError: Mapped to ``500`` if no
@@ -241,6 +241,8 @@ async def get_discovered_agent_info(
             if info.default_task is not None
             else None
         ),
+        ollama_host=info.ollama_host,
+        is_local_ollama=info.is_local_ollama,
     )
 
 

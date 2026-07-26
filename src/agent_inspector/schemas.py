@@ -242,7 +242,7 @@ class TemplatesOut(BaseModel):
 
 
 class AgentInfoOut(BaseModel):
-    """Wire representation of ``GET /api/agent-info`` (see #86).
+    """Wire representation of ``GET /api/agent-info`` (see #86, #90).
 
     The discovered agent's static properties -- knowable from the
     ``LLMAgentBuilder`` itself, without creating a session -- unlike
@@ -251,11 +251,21 @@ class AgentInfoOut(BaseModel):
     ``services.session.get_agent_info`` for what each field means
     (and ``tools``' MCP-provider caveat) and why ``model`` is
     best-effort.
+
+    ``ollama_host``/``is_local_ollama`` are both ``None`` unless the
+    discovered agent's LLM is an ``OllamaLLM`` -- there's no
+    local-daemon concept for anything else. When it is one,
+    ``is_local_ollama`` distinguishes a local daemon (``GET
+    /api/ollama/status``'s reachability check is meaningful) from a
+    remote/cloud one, e.g. Ollama Cloud (it isn't -- see
+    ``services.session._ollama_host_info``).
     """
 
     model: str | None = None
     tools: list[str] = Field(default_factory=list)
     default_task: TaskOut | None = None
+    ollama_host: str | None = None
+    is_local_ollama: bool | None = None
 
 
 class SessionConfigOut(BaseModel):

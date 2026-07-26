@@ -142,6 +142,8 @@ export interface AgentInfoOut {
   model: string | null
   tools: string[]
   default_task: TaskOut | null
+  ollama_host: string | null
+  is_local_ollama: boolean | null
 }
 
 // --- POST /api/sessions/{id}/next-step ---

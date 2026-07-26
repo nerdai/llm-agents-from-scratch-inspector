@@ -32,6 +32,7 @@ from llm_agents_from_scratch.data_structures import (
     Task,
     ToolCallResult,
 )
+from llm_agents_from_scratch.llms import OllamaLLM
 from llm_agents_from_scratch.tools.simple_function import SimpleFunctionTool
 
 from agent_inspector.deps import get_session_service
@@ -163,6 +164,55 @@ class TestGetAgentInfoService:
         assert info.default_task is task
 
 
+class TestOllamaHostDetection:
+    """``ollama_host``/``is_local_ollama`` (see #90).
+
+    Constructing an ``OllamaLLM`` never makes a network call --
+    ``ollama.AsyncClient.__init__`` just builds an ``httpx.AsyncClient``
+    -- so these exercise real instances, not fakes, without needing a
+    live daemon (local or cloud).
+    """
+
+    def test_non_ollama_llm_reports_none(
+        self,
+        agent_builder: LLMAgentBuilder,
+    ) -> None:
+        """A non-`OllamaLLM` reports both `None`, not an error."""
+        service = SessionService(agent_builder=agent_builder)
+
+        info = get_agent_info(service)
+
+        assert info.ollama_host is None
+        assert info.is_local_ollama is None
+
+    def test_local_ollama_llm_is_detected(self) -> None:
+        """`OllamaLLM()` with no `host` resolves to the local default."""
+        service = SessionService(
+            agent_builder=LLMAgentBuilder(llm=OllamaLLM(model="qwen3:14b")),
+        )
+
+        info = get_agent_info(service)
+
+        assert info.ollama_host == "http://127.0.0.1:11434"
+        assert info.is_local_ollama is True
+
+    def test_cloud_ollama_llm_is_detected(self) -> None:
+        """`OllamaLLM(host="https://ollama.com")` is reported as non-local."""
+        service = SessionService(
+            agent_builder=LLMAgentBuilder(
+                llm=OllamaLLM(
+                    host="https://ollama.com",
+                    model="qwen3.5:397b-cloud",
+                ),
+            ),
+        )
+
+        info = get_agent_info(service)
+
+        assert info.ollama_host == "https://ollama.com"
+        assert info.is_local_ollama is False
+
+
 def _client(session_service: SessionService) -> TestClient:
     """Build a ``TestClient`` wired to ``session_service`` via dep override."""
     app = create_app(serve_static=False)
@@ -219,3 +269,35 @@ class TestGetAgentInfoRoute:
         response = client.get("/api/agent-info")
 
         assert response.status_code == status.HTTP_200_OK
+
+    def test_reports_cloud_ollama_host(self) -> None:
+        """A cloud-configured OllamaLLM serializes ollama_host and is_local."""
+        client = _client(
+            SessionService(
+                agent_builder=LLMAgentBuilder(
+                    llm=OllamaLLM(
+                        host="https://ollama.com",
+                        model="qwen3.5:397b-cloud",
+                    ),
+                ),
+            ),
+        )
+
+        response = client.get("/api/agent-info")
+
+        body = response.json()
+        assert body["ollama_host"] == "https://ollama.com"
+        assert body["is_local_ollama"] is False
+
+    def test_reports_none_for_non_ollama_llm(
+        self,
+        agent_builder: LLMAgentBuilder,
+    ) -> None:
+        """A non-OllamaLLM serializes both fields as null."""
+        client = _client(SessionService(agent_builder=agent_builder))
+
+        response = client.get("/api/agent-info")
+
+        body = response.json()
+        assert body["ollama_host"] is None
+        assert body["is_local_ollama"] is None

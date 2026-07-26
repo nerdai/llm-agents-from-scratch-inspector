@@ -1011,7 +1011,7 @@ wheels = [
 
 [[package]]
 name = "llm-agents-from-scratch"
-version = "0.0.20"
+version = "0.0.21"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "asyncio" },
@@ -1025,9 +1025,9 @@ dependencies = [
     { name = "rich" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/cb/69/df68a2c05ab348a9f129964f5e98e68c5309efb2639721ca7eececfd6da5/llm_agents_from_scratch-0.0.20.tar.gz", hash = "sha256:a1aae0f1bcc2d8c6537d33c7df428e5795789d4be1ac878edb291f421bbfaacd", size = 1765080, upload-time = "2026-07-13T23:58:13.97Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/35/8f/1007803c39fc7b64c95d3f424f1f65eff19af5552f7263dad5f5d2a23440/llm_agents_from_scratch-0.0.21.tar.gz", hash = "sha256:5da91debc6ef28556defc53a25ef5bdc562f3be96f882f642bcf04fb191439a9", size = 1798065, upload-time = "2026-07-24T13:03:20.326Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/45/54/140550aab2ff2d4763b4ed73da826983ea101596be52277786a9757b8e34/llm_agents_from_scratch-0.0.20-py3-none-any.whl", hash = "sha256:cdac16d2c43534f9a1a92fe5d9e6fed298361edf419721edd4bfae7362d09c35", size = 76671, upload-time = "2026-07-13T23:58:12.411Z" },
+    { url = "https://files.pythonhosted.org/packages/0b/cc/36edf87c85abb168678e848e9ade4c187352e10f5a777fae32efd5f6c315/llm_agents_from_scratch-0.0.21-py3-none-any.whl", hash = "sha256:759886fe724eb80926b796b10540d6cf70e1a4bf3431cd9507f4efc222b24e22", size = 77228, upload-time = "2026-07-24T13:03:19.159Z" },
 ]
 
 [[package]]
@@ -1056,7 +1056,7 @@ dev = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115.0,<1.0.0" },
     { name = "httpx", specifier = ">=0.28.0,<1.0.0" },
-    { name = "llm-agents-from-scratch", specifier = ">=0.0.19,<0.1.0" },
+    { name = "llm-agents-from-scratch", specifier = ">=0.0.21,<0.1.0" },
     { name = "typer", specifier = ">=0.12.0,<1.0.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0,<1.0.0" },
 ]
