@@ -150,11 +150,21 @@ def launch(
             hour); also settable via
             ``AGENT_INSPECTOR_SESSION_TTL_SECONDS``.
     """
+    # Echoed before `discover_entrypoint` runs, not after -- importing
+    # the script is exactly the step with no other feedback of its
+    # own (unlike the phases below, which either print their own
+    # progress already or are near-instant), so a script with a slow
+    # import chain (heavy dependencies, a cloud LLM's client setup,
+    # ...) would otherwise leave the terminal looking stuck with no
+    # indication anything is happening yet.
+    typer.echo(f"Discovering agent from {agent_script}...")
     try:
         discovered = discover_entrypoint(agent_script)
     except EntrypointDiscoveryError as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(code=1) from e
+    tool_count = len(discovered.agent_builder.tools)
+    typer.echo(f"✓ Agent discovered ({tool_count} tool(s))")
 
     configure_entrypoint(discovered)
 
@@ -196,8 +206,10 @@ def launch(
             )
 
     if not backend_only and not no_open:
+        typer.echo(f"Opening {browser_url} in your browser shortly...")
         _open_browser_later(browser_url)
 
+    typer.echo(f"Starting backend on http://127.0.0.1:{port}...")
     try:
         uvicorn.run(fastapi_app, host="127.0.0.1", port=port)
     finally:
