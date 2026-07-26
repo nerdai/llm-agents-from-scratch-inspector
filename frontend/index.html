@@ -20,11 +20,17 @@
        * as part of the same JS bundle this exists to cover for), with
        * a `prefers-color-scheme` fallback for dark since the app's own
        * `.dark` class toggle (next-themes) hasn't run yet either.
-       * `createRoot(...).render(...)` (main.tsx) replaces `#root`'s
-       * children outright once the real app mounts, so this needs no
-       * JS of its own to remove it.
+       *
+       * Scoped to `#startup-splash`, a child of `#root`, deliberately
+       * -- NOT to `#root` itself. `createRoot(...).render(...)`
+       * (main.tsx) replaces `#root`'s *children*, so `#startup-splash`
+       * (and every rule below that targets it) simply has no matching
+       * element once the real app mounts. A `<style>` tag has no such
+       * lifecycle of its own -- rules written against `#root` directly
+       * would keep applying to whatever React put there instead,
+       * permanently forcing the real app into a centered flex box.
        */
-      #root {
+      #startup-splash {
         display: flex;
         min-height: 100vh;
         flex-direction: column;
@@ -40,7 +46,7 @@
         font-size: 0.8125rem;
       }
       @media (prefers-color-scheme: dark) {
-        #root {
+        #startup-splash {
           background: #1a1815;
           color: #a39d8e;
         }
@@ -66,8 +72,10 @@
   </head>
   <body>
     <div id="root">
-      <div id="startup-spinner"></div>
-      <span>Starting Agent Inspector…</span>
+      <div id="startup-splash">
+        <div id="startup-spinner"></div>
+        <span>Starting Agent Inspector…</span>
+      </div>
     </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
