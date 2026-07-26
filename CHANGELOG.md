@@ -10,6 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - ...
 
+## [0.1.3] - 2026-07-26
+
+### Added
+
+- feat: detect whether the discovered agent's `OllamaLLM` points at a local daemon or a remote/cloud host (`ollama_host`/`is_local_ollama` on `GET /api/agent-info`) -- the app bar shows an "ollama cloud" chip instead of the local online/offline check when it's not local, so a cloud-configured agent no longer needs `ollama serve` running to look healthy (#90)
+- feat: add `demo_cloud.py`, an Ollama Cloud variant of `demo.py` for exercising/testing the above (#90)
+- feat: echo CLI progress (`Discovering agent from ...`, `✓ Agent discovered (N tool(s))`, `Starting backend on ...`) during `agent-inspector launch`, and show a pre-JS startup splash in `index.html`, so a script with a slow import chain doesn't look stuck before the UI can render its own loading state (#90)
+- feat: replace the static "Loading agent info…" text with a live spinner and elapsed-seconds ticker, plus a reassurance message past 4s, so a slow `GET /api/agent-info` reads as "still working" rather than frozen (#90)
+
+### Changed
+
+- chore: bump `llm-agents-from-scratch` dependency to `>=0.0.21` and pass `json_prompt_mode=True` in `demo_cloud.py` for cloud reliability (#90)
+
 ## [0.1.2] - 2026-07-18
 
 ### Added
