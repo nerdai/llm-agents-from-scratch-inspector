@@ -428,7 +428,7 @@ class TestCreateSessionFromConfigSkills:
             skills_scopes=[SkillScope.PROJECT],
         )
 
-        assert set(session.handler.skills) == {"greeter"}
+        assert set(session.handler.skills_registry) == {"greeter"}
 
     async def test_skills_scopes_user_only_excludes_project_skill(
         self,
@@ -450,7 +450,7 @@ class TestCreateSessionFromConfigSkills:
             skills_scopes=[SkillScope.USER],
         )
 
-        assert session.handler.skills == {}
+        assert session.handler.skills_registry == {}
 
     async def test_explicit_only_skills_reaches_run_supervised(
         self,
@@ -460,7 +460,7 @@ class TestCreateSessionFromConfigSkills:
     ) -> None:
         """``explicit_only_skills`` is forwarded to ``run_supervised()``:
         the skill stays discovered (loadable) rather than being dropped
-        from ``handler.skills`` outright. The catalog-visibility effect
+        from ``handler.skills_registry`` outright. The catalog-visibility effect
         of ``explicit_only_skills`` (the framework's own
         ``UseSkillTool._visible``) is an internal implementation detail,
         so it's covered at the route layer instead, via the observable
@@ -477,7 +477,7 @@ class TestCreateSessionFromConfigSkills:
             explicit_only_skills={"greeter"},
         )
 
-        assert "greeter" in session.handler.skills
+        assert "greeter" in session.handler.skills_registry
 
     async def test_omitting_skills_fields_still_works(
         self,
@@ -493,7 +493,7 @@ class TestCreateSessionFromConfigSkills:
 
         session = await service.create_session_from_config(task=_HAILSTONE_TASK)
 
-        assert "greeter" in session.handler.skills
+        assert "greeter" in session.handler.skills_registry
 
 
 class TestCreateSessionRouteSkills:

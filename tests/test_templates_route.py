@@ -12,7 +12,7 @@ from llm_agents_from_scratch.agent.templates import default_templates
 
 from agent_inspector.server import create_app
 
-_EXPECTED_TEMPLATE_COUNT = 11
+_EXPECTED_TEMPLATE_COUNT = 12
 
 _EXPECTED_KEYS = {
     "system_message",
@@ -24,6 +24,7 @@ _EXPECTED_KEYS = {
     "run_step_system_message",
     "run_step_user_message",
     "skills_catalog",
+    "subagents_catalog",
     "memories",
     "approval_rejection_feedback",
 }
@@ -32,8 +33,8 @@ _EXPECTED_KEYS = {
 class TestGetTemplates:
     """``GET /api/templates`` (TRD §6.9)."""
 
-    def test_templates_returns_all_eleven_keys(self) -> None:
-        """All 11 ``LLMAgentTemplates`` keys are present, not a subset."""
+    def test_templates_returns_all_twelve_keys(self) -> None:
+        """All 12 ``LLMAgentTemplates`` keys are present, not a subset."""
         client = TestClient(create_app(serve_static=False))
 
         response = client.get("/api/templates")

@@ -29,7 +29,6 @@ from agent_inspector.errors.session import (
     SessionNotFoundError,
     SessionServiceError,
     StepExecutionError,
-    ToolExecutionError,
     WrongNeedError,
 )
 
@@ -58,7 +57,6 @@ _STATUS_CODES: dict[type[Exception], int] = {
     AgentBuilderNotConfiguredError: status.HTTP_500_INTERNAL_SERVER_ERROR,
     AgentBuildError: status.HTTP_502_BAD_GATEWAY,
     StepExecutionError: status.HTTP_502_BAD_GATEWAY,
-    ToolExecutionError: status.HTTP_502_BAD_GATEWAY,
 }
 
 
