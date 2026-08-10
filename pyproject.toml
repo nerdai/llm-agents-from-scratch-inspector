@@ -97,8 +97,11 @@ extend-immutable-calls = ["typer.Argument", "typer.Option"]
 "tests/**/*.py" = ["D"]
 # `launch`'s options mirror `uvicorn`/typer CLI convention (one param
 # per flag); splitting them into a config object would be a bigger,
-# unrelated refactor than #25's session-TTL option warrants.
-"src/agent_inspector/cli.py" = ["PLR0913"]
+# unrelated refactor than #25's session-TTL option warrants. PLR0917
+# (too many *positional* args) is the same complaint in practice --
+# every one of these is a `typer.Option`, called by name at the CLI,
+# never positionally.
+"src/agent_inspector/cli.py" = ["PLR0913", "PLR0917"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google" # Ensures Google style
