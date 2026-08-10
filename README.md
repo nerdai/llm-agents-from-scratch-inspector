@@ -40,9 +40,7 @@ from llm_agents_from_scratch.data_structures import Task
 from llm_agents_from_scratch.llms import OllamaLLM
 
 agent_builder = (
-    LLMAgentBuilder()
-    .with_llm(OllamaLLM(model="qwen3:14b"))
-    .with_tool(my_tool)
+    LLMAgentBuilder().with_llm(OllamaLLM(model="qwen3:14b")).with_tool(my_tool)
 )
 
 # Optional -- pre-fills the UI's task field at launch time.

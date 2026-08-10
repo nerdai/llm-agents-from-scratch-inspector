@@ -105,7 +105,7 @@ async def create_session(
                 scope=skill.scope,
                 explicit_only=name in (explicit_only_skills or set()),
             )
-            for name, skill in session.handler.skills.items()
+            for name, skill in session.handler.skills_registry.items()
         ],
         need=session.need,
     )
@@ -319,13 +319,12 @@ async def post_run_step(
         SessionBusyError: Mapped to ``409`` if the session is busy.
         WrongNeedError: Mapped to ``409`` if the session isn't waiting
             on ``need == "run"``.
-        ToolExecutionError: Mapped to ``502`` if a tool call itself
-            raises while executing (e.g. an ``MCPTool`` transport
-            failure, or a plain function tool raising) -- distinct
-            from ``StepExecutionError`` below.
         StepExecutionError: Mapped to ``502`` if the framework raises
-            while executing the step for any other reason
-            (LLM/framework-level failure).
+            while executing the step (LLM/framework-level failure --
+            a tool call itself raising doesn't reach here; it comes
+            back as a normal ``200`` with that call's entry in
+            ``tool_calls`` carrying ``error: true``, see
+            ``services.session._RecordingSyncTool``).
         NoPendingStepError: Mapped to ``500`` on a server invariant
             violation (``need == "run"`` with no pending step
             recorded).
