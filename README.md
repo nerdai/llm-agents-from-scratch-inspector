@@ -8,6 +8,8 @@ This repo is a two-language monorepo (Python backend + TypeScript
 frontend) packaged as a single PyPI wheel that bundles the built frontend
 assets and ships a CLI.
 
+![Agent Inspector demo -- stepping a Hailstone-sequence agent through get_next_step()/run_step() to a final result, then approving it](docs/demo.gif)
+
 ## Installation
 
 ```bash
