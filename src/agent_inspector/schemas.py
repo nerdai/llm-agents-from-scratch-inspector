@@ -69,7 +69,7 @@ class SkillOut(BaseModel):
 
     Attributes:
         name (str): The skill's name (``Skill.frontmatter.name``, the
-            dict key in ``TaskHandler.skills``).
+            dict key in ``TaskHandler.skills_registry``).
         description (str): The skill's description
             (``Skill.frontmatter.description``).
         scope (SkillScope): Which scope the skill was discovered under
@@ -96,7 +96,7 @@ class CreateSessionResponse(BaseModel):
     ``tools`` reflects the discovered builder's real, registered tool
     names (``LLMAgent.tools_registry``, see #8). ``skills`` reflects
     the real skills the framework discovered for this session
-    (``SupervisedTaskHandler.skills``, see #9), tagged with whether
+    (``SupervisedTaskHandler.skills_registry``, see #9), tagged with whether
     each was requested as ``explicit_only_skills``. ``model`` is
     best-effort, same rationale as ``SessionConfigOut.model`` below --
     ``BaseLLM`` has no generic ``model`` attribute, only concrete
