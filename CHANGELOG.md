@@ -10,6 +10,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - ...
 
+## [0.1.4] - 2026-08-15
+
+### Fixed
+
+- fix: `create_session` referenced `TaskHandler.skills` instead of `skills_registry`, 500ing every session creation against `llm-agents-from-scratch>=0.0.22` (#101)
+
+### Changed
+
+- Bump `llm-agents-from-scratch` 0.0.21 -> 0.0.22, `fastapi` 0.139.0 -> 0.141.1, `typer` 0.26.8 -> 0.27.1, `pre-commit` 4.6.0 -> 4.6.1, `ruff` 0.15.21 -> 0.16.1 (#101)
+- Fix 22 Dependabot alerts across npm and pip (#103)
+- Bump the all-npm-packages group across 1 directory with 4 updates (#104)
+- Add Dependabot config for weekly dependency updates (#96)
+- Bump GitHub Actions dependencies: `actions/setup-node`, `pypa/gh-action-pypi-publish`, `actions/upload-artifact`, `actions/download-artifact` (#97, #98, #99, #100)
+
+### Added
+
+- Add a demo screen recording to the README (#95)
+
 ## [0.1.3] - 2026-07-26
 
 ### Added
