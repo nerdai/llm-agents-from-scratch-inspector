@@ -1,5 +1,8 @@
 .claude/settings.local.json
 
+# Node
+frontend/node_modules/
+
 # Python
 __pycache__/
 *.py[cod]
