@@ -40,6 +40,14 @@ omit = [
 
 [tool.hatch.build]
 artifacts = ["src/agent_inspector/web/**"]
+# Build output, not source -- the custom hook (hatch_build.py) creates
+# it fresh via `npm ci` every build. Hatchling has no VCS-ignore
+# awareness of its own, so without this it gets swept into the sdist
+# wholesale (13000+ entries) -- harmless most of the time, but a
+# node_modules tree can contain a directory/file naming collision that
+# breaks tar packing outright depending on exactly what got resolved
+# (see the npm dependency bump that first tripped this).
+exclude = ["frontend/node_modules"]
 
 [tool.hatch.build.hooks.custom]
 path = "hatch_build.py"
