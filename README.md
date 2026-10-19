@@ -37,20 +37,22 @@ in the framework.
 # main.py
 from llm_agents_from_scratch import LLMAgentBuilder
 from llm_agents_from_scratch.data_structures import Task
-from llm_agents_from_scratch.llms import OllamaLLM
+from llm_agents_from_scratch.notebook_utils import make_llm
 
-agent_builder = (
-    LLMAgentBuilder().with_llm(OllamaLLM(model="qwen3:14b")).with_tool(my_tool)
-)
+agent_builder = LLMAgentBuilder().with_llm(make_llm()).with_tool(my_tool)
 
 # Optional -- pre-fills the UI's task field at launch time.
 default_task = Task(instruction="Describe the task to run by default.")
 ```
 
 ```bash
-ollama serve                    # in one terminal, if using OllamaLLM
-agent-inspector launch main.py  # in another
+export OLLAMA_API_KEY=<your key>
+agent-inspector launch main.py
 ```
+
+`make_llm()` is the library's own provider helper (see the
+[Quickstart](#quickstart) for what it picks), but any `LLM` works
+here -- e.g. `OllamaLLM(...)`, `OpenAILLM(...)`, or your own.
 
 This opens a browser tab at the Inspector UI, where you can enter a
 task and step through `get_next_step()`/`run_step()` against your own
@@ -85,33 +87,37 @@ a port of [`llm-agents-from-scratch`](https://github.com/nerdai/llm-agents-from-
 `next_number` tool), driven one call at a time through the Inspector's
 UI instead of the notebook's own manual loop.
 
-1. Install and start [Ollama](https://ollama.com/download), then pull the
-   model `demo.py` uses:
-
-   ```bash
-   ollama serve                 # in one terminal
-   ollama pull qwen3:14b        # in another
-   ```
+1. Create an [Ollama Cloud](https://ollama.com/cloud) API key at
+   <https://ollama.com/settings/keys>.
 
 2. From this repo's root:
 
    ```bash
+   export OLLAMA_API_KEY=<your key>
    uv sync
    uv run agent-inspector launch demo.py
    ```
 
-   This opens a browser tab. Enter a task, e.g. "Compute the full
-   Hailstone sequence starting from 4, step by step using
-   next_number, until you reach 1.", create the session, and step
-   through `get_next_step()`/`run_step()` until the agent reaches a
-   final result to approve.
+   This opens a browser tab with the task field pre-filled ("Compute
+   the full Hailstone sequence starting from 4, ..."). Create the
+   session and step through `get_next_step()`/`run_step()` until the
+   agent reaches a final result to approve. The app bar shows an
+   "ollama cloud" chip.
 
-No local Ollama? `demo_cloud.py` is the same demo pointed at
-[Ollama Cloud](https://ollama.com/cloud) instead -- set `OLLAMA_API_KEY`
-(the `ollama` package reads it directly; nothing here handles it) and
-run `uv run agent-inspector launch demo_cloud.py`. The app bar shows
-an "ollama cloud" chip instead of the local daemon's online/offline
-check either way.
+`demo.py` builds its LLM with `make_llm()` from
+`llm_agents_from_scratch.notebook_utils`, the same helper the
+library's chapter notebooks use, so it picks the library's current
+default Ollama Cloud model rather than hard-coding one here.
+
+**No API key?** The same command falls back to a local
+[Ollama](https://ollama.com/download) with `qwen3:14b` -- run
+`ollama pull qwen3:14b` once first. `make_llm()` starts the Ollama
+service itself if it isn't already running, so there's no separate
+`ollama serve` step; the app bar then shows the local daemon's
+online/offline check instead. `OLLAMA_MODEL=<name>` overrides the
+model on either path, and `LLM_PROVIDER=openai` or `anthropic`
+switches provider (those need `llm-agents-from-scratch`'s `openai` /
+`anthropic` extras).
 
 ## Development
 

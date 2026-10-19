@@ -116,11 +116,9 @@ for the full rationale. Instead:
 
    ```python
    from llm_agents_from_scratch import LLMAgentBuilder
-   from llm_agents_from_scratch.llms import OllamaLLM
+   from llm_agents_from_scratch.notebook_utils import make_llm
 
-   agent_builder = (
-       LLMAgentBuilder().with_llm(OllamaLLM(model="qwen3:14b")).with_tool(my_tool)
-   )
+   agent_builder = LLMAgentBuilder().with_llm(make_llm()).with_tool(my_tool)
    ```
 
 2. `agent-inspector launch main.py` imports that script (standard

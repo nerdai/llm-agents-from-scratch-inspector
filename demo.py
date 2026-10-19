@@ -11,11 +11,17 @@ UI does for you.
 
 Run with:
 
+    export OLLAMA_API_KEY=<your key>
     uv run agent-inspector launch demo.py
 
-Requires a running Ollama daemon (`ollama serve`) with the
-`qwen3:14b` model pulled (`ollama pull qwen3:14b`) -- or edit the
-`OllamaLLM(...)` call below to point at a model you already have.
+The LLM comes from `make_llm()`, the same helper the
+`llm-agents-from-scratch` chapter notebooks use. Export
+`OLLAMA_API_KEY` (create one at https://ollama.com/settings/keys) to
+run on Ollama Cloud, which is recommended -- no local `ollama serve`
+needed. Without a key it falls back to a local Ollama with `qwen3:14b`
+(`ollama pull qwen3:14b`), starting the service if needed.
+`LLM_PROVIDER=openai` or `anthropic` switches provider, as in the
+notebooks (those need the library's `openai`/`anthropic` extras).
 
 Deliberately doesn't wire up the notebook's `stop-at-one` skill (its
 own `run_supervised(..., explicit_only_skills=["stop-at-one"])` call
@@ -29,7 +35,7 @@ just the one tool for a reliably smooth first run.
 
 from llm_agents_from_scratch import LLMAgentBuilder
 from llm_agents_from_scratch.data_structures import Task
-from llm_agents_from_scratch.llms import OllamaLLM
+from llm_agents_from_scratch.notebook_utils import make_llm
 from llm_agents_from_scratch.tools import SimpleFunctionTool
 
 
@@ -43,11 +49,7 @@ def next_number(x: int) -> int:
 next_number_tool = SimpleFunctionTool(func=next_number)
 
 agent_builder = (
-    LLMAgentBuilder()
-    .with_llm(
-        OllamaLLM(model="qwen3:14b", think=False),
-    )
-    .with_tool(next_number_tool)
+    LLMAgentBuilder().with_llm(make_llm()).with_tool(next_number_tool)
 )
 
 # Optional (see #86 / discovery.py): pre-fills the UI's task field at
