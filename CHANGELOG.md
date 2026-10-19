@@ -8,16 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+## [0.1.5] - 2026-10-19
+
+First release on PyPI since 0.1.3: 0.1.4 was never tagged or published, so this also ships its `skills_registry` fix below.
+
 ### Changed
 
 - Use the new Scratch mascot (the book videos' cast rig) for the app-bar logo and favicon (#127)
 - feat: default the demo to Ollama Cloud -- `demo.py` builds its LLM with `llm-agents-from-scratch`'s `make_llm()` (Ollama Cloud when `OLLAMA_API_KEY` is set, otherwise local `qwen3:14b` with the service auto-started), and the README Quickstart leads with Ollama Cloud; bump the `llm-agents-from-scratch` floor to `>=0.0.24` (#126)
+- Bump npm and Python dependency groups (#110, #111, #112, #113, #115, #116, #119, #124); hold `typescript` on 6.0.x, since `typescript-eslint` doesn't support TypeScript 7 yet (#124)
 
 ### Removed
 
 - `demo_cloud.py`, which hard-coded the retired `qwen3.5:397b-cloud` model; `demo.py` now covers both cloud and local (#126)
 
 ## [0.1.4] - 2026-08-15
+
+Not published: never tagged, so these changes first reach PyPI in 0.1.5.
 
 ### Fixed
 
