@@ -16,6 +16,7 @@ First release on PyPI since 0.1.3: 0.1.4 was never tagged or published, so this 
 
 - Use the new Scratch mascot (the book videos' cast rig) for the app-bar logo and favicon (#127)
 - feat: default the demo to Ollama Cloud -- `demo.py` builds its LLM with `llm-agents-from-scratch`'s `make_llm()` (Ollama Cloud when `OLLAMA_API_KEY` is set, otherwise local `qwen3:14b` with the service auto-started), and the README Quickstart leads with Ollama Cloud; bump the `llm-agents-from-scratch` floor to `>=0.0.24` (#126)
+- Lock `llm-agents-from-scratch` to 0.0.26 (#129)
 - Bump npm and Python dependency groups (#110, #111, #112, #113, #115, #116, #119, #124); hold `typescript` on 6.0.x, since `typescript-eslint` doesn't support TypeScript 7 yet (#124)
 
 ### Removed
