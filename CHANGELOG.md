@@ -8,7 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
-- ...
+### Changed
+
+- Use the new Scratch mascot (the book videos' cast rig) for the app-bar logo and favicon (#127)
 
 ## [0.1.4] - 2026-08-15
 
