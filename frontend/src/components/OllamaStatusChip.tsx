@@ -15,7 +15,8 @@ import { useAgentInfo, useOllamaStatus } from '../api/hooks'
  * misleading ("ollama offline"), for a script that isn't Ollama-backed
  * at all, or is but points at a remote/cloud host (e.g. Ollama Cloud,
  * `OllamaLLM(host="https://ollama.com", ...)`, authenticated via the
- * `OLLAMA_API_KEY` env var -- see `demo_cloud.py`). `useAgentInfo()`'s
+ * `OLLAMA_API_KEY` env var -- `demo.py`'s `make_llm()` takes this path
+ * whenever that key is set). `useAgentInfo()`'s
  * `is_local_ollama` distinguishes the three cases; while it's still
  * loading, this defaults to the existing local-check behavior rather
  * than flashing a different state first.

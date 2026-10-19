@@ -33,6 +33,8 @@ from llm_agents_from_scratch.data_structures import (
     ToolCallResult,
 )
 from llm_agents_from_scratch.llms import OllamaLLM
+from llm_agents_from_scratch.notebook_utils import llm as notebook_utils_llm
+from llm_agents_from_scratch.notebook_utils import make_llm
 from llm_agents_from_scratch.tools.simple_function import SimpleFunctionTool
 
 from agent_inspector.deps import get_session_service
@@ -202,7 +204,7 @@ class TestOllamaHostDetection:
             agent_builder=LLMAgentBuilder(
                 llm=OllamaLLM(
                     host="https://ollama.com",
-                    model="qwen3.5:397b-cloud",
+                    model="any-model:cloud",
                 ),
             ),
         )
@@ -211,6 +213,55 @@ class TestOllamaHostDetection:
 
         assert info.ollama_host == "https://ollama.com"
         assert info.is_local_ollama is False
+
+    def test_make_llm_cloud_path_is_detected_as_non_local(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """`make_llm()` with `OLLAMA_API_KEY` set reports non-local (#125).
+
+        Pins the contract `demo.py` relies on: the library's cloud path
+        sets `host="https://ollama.com"`, so the status chip shows
+        "ollama cloud" without any Inspector-side knowledge of which
+        model the library currently defaults to.
+        """
+        monkeypatch.setenv("OLLAMA_API_KEY", "test-key")
+        monkeypatch.delenv("LLM_PROVIDER", raising=False)
+        monkeypatch.delenv("OLLAMA_MODEL", raising=False)
+        service = SessionService(
+            agent_builder=LLMAgentBuilder(llm=make_llm()),
+        )
+
+        info = get_agent_info(service)
+
+        assert info.ollama_host == "https://ollama.com"
+        assert info.is_local_ollama is False
+
+    def test_make_llm_local_path_is_detected_as_local(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """`make_llm()` with no key reports local (#125).
+
+        `ensure_ollama()` would otherwise try to spawn `ollama serve`;
+        stubbed out since only the resulting host matters here.
+        """
+        monkeypatch.delenv("OLLAMA_API_KEY", raising=False)
+        monkeypatch.delenv("LLM_PROVIDER", raising=False)
+        monkeypatch.delenv("OLLAMA_MODEL", raising=False)
+        monkeypatch.setattr(
+            notebook_utils_llm,
+            "ensure_ollama",
+            lambda *args, **kwargs: None,
+        )
+        service = SessionService(
+            agent_builder=LLMAgentBuilder(llm=make_llm()),
+        )
+
+        info = get_agent_info(service)
+
+        assert info.ollama_host == "http://127.0.0.1:11434"
+        assert info.is_local_ollama is True
 
 
 def _client(session_service: SessionService) -> TestClient:
@@ -277,7 +328,7 @@ class TestGetAgentInfoRoute:
                 agent_builder=LLMAgentBuilder(
                     llm=OllamaLLM(
                         host="https://ollama.com",
-                        model="qwen3.5:397b-cloud",
+                        model="any-model:cloud",
                     ),
                 ),
             ),
