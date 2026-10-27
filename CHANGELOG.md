@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+### Changed
+
+- Use the redesigned Scratch (head on a white tile) for the app-bar logo and favicon (#133)
+
 ## [0.1.5] - 2026-10-19
 
 First release on PyPI since 0.1.3: 0.1.4 was never tagged or published, so this also ships its `skills_registry` fix below.
