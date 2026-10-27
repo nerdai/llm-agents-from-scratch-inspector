@@ -8,9 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+## [0.1.6] - 2026-10-27
+
 ### Changed
 
 - Use the redesigned Scratch (head on a white tile) for the app-bar logo and favicon (#133)
+- Bump `pypa/gh-action-pypi-publish` 1.14.2 -> 1.14.3 (#130), the npm group (`lucide-react`, `vite`) (#131), and the Python group (`fastapi`, `ruff`) (#132)
 
 ## [0.1.5] - 2026-10-19
 
