@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+### Changed
+
+- docs: re-record the README demo GIF with the redesigned Scratch logo (#135)
+
 ## [0.1.6] - 2026-10-27
 
 ### Changed
