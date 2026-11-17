@@ -10,8 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- chore!: drop Python 3.10 support; `requires-python` is now `>=3.11`, matching llm-agents-from-scratch. Python 3.10 is end of life and the patched `pillow` and `filelock` releases need 3.11+. The unit-test matrix now covers 3.11–3.13 (PR_NUM)
-- chore(deps): clear Dependabot security alerts. Python: `pillow` 13 (via `fastembed` 0.9 / `qdrant-client` 1.20), `pyjwt`, `urllib3`, `virtualenv`, `filelock`, `certifi`, `pyasn1`, `opentelemetry-api`. Frontend: `npm audit fix` (`body-parser`, `hono`, `@hono/node-server`, `fast-uri`, `deepmerge`, `minimatch`), plus an `overrides` entry pinning `@ts-morph/common`'s `minimatch` to `^11.0.1`, since the latest `shadcn` still pulls `ts-morph` 26 (PR_NUM)
+- chore!: drop Python 3.10 support; `requires-python` is now `>=3.11`, matching llm-agents-from-scratch. Python 3.10 is end of life and the patched `pillow` and `filelock` releases need 3.11+. The unit-test matrix now covers 3.11–3.13 (#141)
+- chore(deps): clear Dependabot security alerts. Python: `pillow` 13 (via `fastembed` 0.9 / `qdrant-client` 1.20), `pyjwt`, `urllib3`, `virtualenv`, `filelock`, `certifi`, `pyasn1`, `opentelemetry-api`. Frontend: `npm audit fix` (`body-parser`, `hono`, `@hono/node-server`, `fast-uri`, `deepmerge`, `minimatch`), plus an `overrides` entry pinning `@ts-morph/common`'s `minimatch` to `^11.0.1`, since the latest `shadcn` still pulls `ts-morph` 26 (#141)
 - docs: re-record the README demo GIF with the redesigned Scratch logo (#135)
 
 ## [0.1.6] - 2026-10-27
