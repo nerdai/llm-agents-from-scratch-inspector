@@ -1079,7 +1079,7 @@ wheels = [
 
 [[package]]
 name = "llm-agents-from-scratch"
-version = "0.0.26"
+version = "0.0.27"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "a2a-sdk" },
@@ -1094,9 +1094,9 @@ dependencies = [
     { name = "rich" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c5/3e/8dacc11aca0957f631e1604671d3cbab5448301fcb365adf9453ae31ddbb/llm_agents_from_scratch-0.0.26.tar.gz", hash = "sha256:7aee0f6189ad98366f81f90ad38a004aee6aafeea72ff78082d897730f5061ec", size = 2381942, upload-time = "2026-10-19T20:28:32.506Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e4/c8/302a8ffc68c1f8601c1e299f288294c53b663da80b57e047f515fb42a0a5/llm_agents_from_scratch-0.0.27.tar.gz", hash = "sha256:3b42067a8b5efd6c1eb21f22f1bee18c2f7d083df420b96cb2c7222f954b2f98", size = 2366955, upload-time = "2026-11-17T06:39:19.22Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f3/c8/704727388ee5b6809455207c56a4b98910eadbcea2fc8fbbea3ddad25f2b/llm_agents_from_scratch-0.0.26-py3-none-any.whl", hash = "sha256:6fa031415b23e7fedbf9a736de64055e500d989034bf9c16572be8c33afa7893", size = 120174, upload-time = "2026-10-19T20:28:30.835Z" },
+    { url = "https://files.pythonhosted.org/packages/ce/91/ebd13487f1761f0bc0b7f15308d093555196053a9634d4b0d56691bcc37b/llm_agents_from_scratch-0.0.27-py3-none-any.whl", hash = "sha256:85114120f8dd9468567b931041c5f5fe8b5d2cf3fe4dc0bd324917c38bc2b99b", size = 120466, upload-time = "2026-11-17T06:39:17.725Z" },
 ]
 
 [[package]]
@@ -1125,7 +1125,7 @@ dev = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115.0,<1.0.0" },
     { name = "httpx", specifier = ">=0.28.0,<1.0.0" },
-    { name = "llm-agents-from-scratch", specifier = ">=0.0.24,<0.1.0" },
+    { name = "llm-agents-from-scratch", specifier = ">=0.0.27,<0.1.0" },
     { name = "typer", specifier = ">=0.12.0,<1.0.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0,<1.0.0" },
 ]
